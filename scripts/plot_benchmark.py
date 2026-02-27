@@ -193,7 +193,223 @@ def main() -> None:
         dpi=args.dpi,
     )
 
+    warmups = report.get("warmups", [])
+    plot_jit_warmup_comparison(
+        warmups=warmups,
+        runs=report.get("runs", []),
+        mode_order=modes,
+        title=f"{args.title_prefix} - Before vs After JIT Warmup",
+        output_path=output_dir / "jit_warmup_before_after.png",
+        dpi=args.dpi,
+    )
+    plot_jit_warmup_delta_by_threads(
+        warmups=warmups,
+        runs=report.get("runs", []),
+        mode_order=modes,
+        threads=threads,
+        title=f"{args.title_prefix} - JIT Warmup Delta by Thread Count",
+        output_path=output_dir / "jit_warmup_delta_by_threads.png",
+        dpi=args.dpi,
+    )
+
     print(f"Wrote charts to {output_dir.resolve()}")
+
+
+def plot_jit_warmup_comparison(
+    warmups: list[dict],
+    runs: list[dict],
+    mode_order: list[str],
+    title: str,
+    output_path: Path,
+    dpi: int,
+) -> None:
+    before_values: list[float] = []
+    after_values: list[float] = []
+    labels: list[str] = []
+
+    for mode in mode_order:
+        if warmups:
+            warmup_samples = [
+                float(item["elapsedMillis"])
+                for item in warmups
+                if item.get("mode") == mode and item.get("success", False) and item.get("elapsedMillis") is not None
+            ]
+            measured_samples = [
+                float(item["elapsedMillis"])
+                for item in runs
+                if item.get("mode") == mode and item.get("success", False) and item.get("elapsedMillis") is not None
+            ]
+        else:
+            warmup_samples = [
+                float(item["elapsedMillis"])
+                for item in runs
+                if (
+                    item.get("mode") == mode
+                    and int(item.get("iteration", 0)) == 1
+                    and item.get("success", False)
+                    and item.get("elapsedMillis") is not None
+                )
+            ]
+            measured_samples = [
+                float(item["elapsedMillis"])
+                for item in runs
+                if (
+                    item.get("mode") == mode
+                    and int(item.get("iteration", 0)) > 1
+                    and item.get("success", False)
+                    and item.get("elapsedMillis") is not None
+                )
+            ]
+
+        if not warmup_samples or not measured_samples:
+            continue
+
+        labels.append(mode)
+        before_values.append(summarize_metric(warmup_samples))
+        after_values.append(summarize_metric(measured_samples))
+
+    if not labels:
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    x_positions = list(range(len(labels)))
+    bar_width = 0.38
+
+    before_positions = [x - bar_width / 2 for x in x_positions]
+    after_positions = [x + bar_width / 2 for x in x_positions]
+
+    ax.bar(
+        before_positions,
+        before_values,
+        width=bar_width,
+        color=JETBRAINS_COLORS[1 % len(JETBRAINS_COLORS)],
+        alpha=0.9,
+        edgecolor="#242424",
+        linewidth=0.8,
+        label="Before warmup (warmup runs)",
+    )
+    ax.bar(
+        after_positions,
+        after_values,
+        width=bar_width,
+        color=JETBRAINS_COLORS[3 % len(JETBRAINS_COLORS)],
+        alpha=0.9,
+        edgecolor="#242424",
+        linewidth=0.8,
+        label="After warmup (measured runs)",
+    )
+
+    ax.set_title(title)
+    ax.set_xlabel("Mode")
+    ax.set_ylabel("Average Elapsed Time (ms)")
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+    plt.close(fig)
+
+
+def plot_jit_warmup_delta_by_threads(
+    warmups: list[dict],
+    runs: list[dict],
+    mode_order: list[str],
+    threads: list[int],
+    title: str,
+    output_path: Path,
+    dpi: int,
+) -> None:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x_positions = [math.log2(t) for t in threads]
+    has_data = False
+
+    for index, mode in enumerate(mode_order):
+        deltas: list[float] = []
+        for thread in threads:
+            if warmups:
+                warmup_samples = [
+                    float(item["elapsedMillis"])
+                    for item in warmups
+                    if (
+                        item.get("mode") == mode
+                        and int(item.get("threadCount", 0)) == thread
+                        and item.get("success", False)
+                        and item.get("elapsedMillis") is not None
+                    )
+                ]
+                measured_samples = [
+                    float(item["elapsedMillis"])
+                    for item in runs
+                    if (
+                        item.get("mode") == mode
+                        and int(item.get("threadCount", 0)) == thread
+                        and item.get("success", False)
+                        and item.get("elapsedMillis") is not None
+                    )
+                ]
+            else:
+                warmup_samples = [
+                    float(item["elapsedMillis"])
+                    for item in runs
+                    if (
+                        item.get("mode") == mode
+                        and int(item.get("threadCount", 0)) == thread
+                        and int(item.get("iteration", 0)) == 1
+                        and item.get("success", False)
+                        and item.get("elapsedMillis") is not None
+                    )
+                ]
+                measured_samples = [
+                    float(item["elapsedMillis"])
+                    for item in runs
+                    if (
+                        item.get("mode") == mode
+                        and int(item.get("threadCount", 0)) == thread
+                        and int(item.get("iteration", 0)) > 1
+                        and item.get("success", False)
+                        and item.get("elapsedMillis") is not None
+                    )
+                ]
+
+            if not warmup_samples or not measured_samples:
+                deltas.append(math.nan)
+                continue
+
+            warmup_avg = summarize_metric(warmup_samples)
+            measured_avg = summarize_metric(measured_samples)
+            if warmup_avg <= 0:
+                deltas.append(math.nan)
+                continue
+
+            delta_percent = ((warmup_avg - measured_avg) / warmup_avg) * 100.0
+            deltas.append(delta_percent)
+
+        filtered = [(x, y) for x, y in zip(x_positions, deltas) if not math.isnan(y)]
+        if not filtered:
+            continue
+
+        has_data = True
+        xs = [item[0] for item in filtered]
+        ys = [item[1] for item in filtered]
+        color = JETBRAINS_COLORS[index % len(JETBRAINS_COLORS)]
+
+        ax.plot(xs, ys, marker="o", linewidth=2.0, color=color, label=mode)
+
+    if not has_data:
+        plt.close(fig)
+        return
+
+    ax.axhline(0.0, color="#888888", linewidth=1.0, linestyle="--")
+    ax.set_title(title)
+    ax.set_xlabel("Thread Count")
+    ax.set_ylabel("Elapsed Time Reduction After Warmup (%)")
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([str(t) for t in threads])
+    ax.legend(title="Mode")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ fun benchmarkMain(args: Array<String>) {
     val metadata = downloader.fetchMetadata(url)
     val expectedSha256 = fetchSha256OverHttp(client, url, Duration.ofMillis(requestTimeoutMs))
 
+    val warmupRows = mutableListOf<BenchmarkWarmupRow>()
     val runRows = mutableListOf<BenchmarkRunRow>()
 
     for (mode in modes) {
@@ -56,8 +57,15 @@ fun benchmarkMain(args: Array<String>) {
                 val warmupOutput = workDir.resolve(
                     "warmup-${mode.name.lowercase()}-$threads-$warmupIteration-${UUID.randomUUID()}.bin",
                 )
+                var elapsedMillis: Long? = null
+                var bytesDownloaded: Long? = null
+                var checksum: String? = null
+                var checksumMatch = false
+                var success = false
+                var errorMessage: String? = null
+
                 try {
-                    downloader.download(
+                    val result = downloader.download(
                         url = url,
                         destination = warmupOutput,
                         config = DownloadConfig(
@@ -72,9 +80,30 @@ fun benchmarkMain(args: Array<String>) {
                             expectedSha256 = expectedSha256,
                         ),
                     )
+                    elapsedMillis = result.elapsedMillis
+                    bytesDownloaded = result.bytesDownloaded
+                    checksum = sha256(warmupOutput)
+                    checksumMatch = checksum.equals(expectedSha256, ignoreCase = true)
+                    success = checksumMatch
+                } catch (exception: Exception) {
+                    errorMessage = exception.message ?: exception::class.java.simpleName
                 } finally {
                     Files.deleteIfExists(warmupOutput)
                 }
+
+                warmupRows += BenchmarkWarmupRow(
+                    mode = mode.name.lowercase(),
+                    threadCount = threads,
+                    warmupIteration = warmupIteration,
+                    chunkSizeBytes = chunkSizeBytes,
+                    ioBufferBytes = ioBufferBytes,
+                    elapsedMillis = elapsedMillis,
+                    bytesDownloaded = bytesDownloaded,
+                    sha256 = checksum,
+                    checksumMatch = checksumMatch,
+                    success = success,
+                    error = errorMessage,
+                )
             }
 
             for (iteration in 1..iterations) {
@@ -113,12 +142,6 @@ fun benchmarkMain(args: Array<String>) {
                     Files.deleteIfExists(output)
                 }
 
-                val throughputMiBps = if (success && elapsedMillis != null && bytesDownloaded != null && elapsedMillis > 0) {
-                    round(((bytesDownloaded.toDouble() / (1024.0 * 1024.0)) / (elapsedMillis.toDouble() / 1000.0)) * 1000.0) / 1000.0
-                } else {
-                    null
-                }
-
                 runRows += BenchmarkRunRow(
                     mode = mode.name.lowercase(),
                     threadCount = threads,
@@ -127,7 +150,6 @@ fun benchmarkMain(args: Array<String>) {
                     ioBufferBytes = ioBufferBytes,
                     elapsedMillis = elapsedMillis,
                     bytesDownloaded = bytesDownloaded,
-                    throughputMiBps = throughputMiBps,
                     sha256 = checksum,
                     checksumMatch = checksumMatch,
                     success = success,
@@ -158,20 +180,21 @@ fun benchmarkMain(args: Array<String>) {
             connectTimeoutMs = connectTimeoutMs,
             requestTimeoutMs = requestTimeoutMs,
         ),
+        warmups = warmupRows,
         runs = runRows,
         summary = buildSummary(runRows, modes.map { it.name.lowercase() }, threadCounts),
     )
 
     Files.writeString(outputJson, report.toJson())
-    println("Benchmark complete: ${report.runs.size} runs")
+    println("Benchmark complete: warmups=${report.warmups.size} runs=${report.runs.size}")
     report.summary.perMode.forEach { modeSummary ->
         println(
             "mode=${modeSummary.mode} bestThreads=${modeSummary.bestThreadCount} " +
-                "avgThroughputMiBps=${modeSummary.bestAverageThroughputMiBps}",
+                "avgElapsedMillis=${modeSummary.bestAverageElapsedMillis}",
         )
     }
     report.summary.optimizedVsNaive?.let { diff ->
-        println("optimized/naive speedup at each mode optimum: ${diff.speedupAtModeOptimum}")
+        println("optimized/naive time speedup at each mode optimum: ${diff.speedupAtModeOptimum}")
     }
     println("Output JSON: ${outputJson.toAbsolutePath()}")
 }
@@ -336,7 +359,20 @@ data class BenchmarkRunRow(
     val ioBufferBytes: Int,
     val elapsedMillis: Long?,
     val bytesDownloaded: Long?,
-    val throughputMiBps: Double?,
+    val sha256: String?,
+    val checksumMatch: Boolean,
+    val success: Boolean,
+    val error: String?,
+)
+
+data class BenchmarkWarmupRow(
+    val mode: String,
+    val threadCount: Int,
+    val warmupIteration: Int,
+    val chunkSizeBytes: Long,
+    val ioBufferBytes: Int,
+    val elapsedMillis: Long?,
+    val bytesDownloaded: Long?,
     val sha256: String?,
     val checksumMatch: Boolean,
     val success: Boolean,
@@ -349,13 +385,13 @@ data class BenchmarkReport(
     val target: BenchmarkTarget,
     val host: HostMetadata,
     val benchmark: BenchmarkConfigSection,
+    val warmups: List<BenchmarkWarmupRow>,
     val runs: List<BenchmarkRunRow>,
     val summary: BenchmarkSummary,
 )
 
 data class BenchmarkThreadSummary(
     val threadCount: Int,
-    val averageThroughputMiBps: Double,
     val averageElapsedMillis: Double,
     val successRate: Double,
 )
@@ -364,7 +400,7 @@ data class BenchmarkModeSummary(
     val mode: String,
     val threadSummaries: List<BenchmarkThreadSummary>,
     val bestThreadCount: Int,
-    val bestAverageThroughputMiBps: Double,
+    val bestAverageElapsedMillis: Double,
 )
 
 data class OptimizedVsNaiveSummary(
@@ -386,44 +422,44 @@ private fun buildSummary(
             val samples = rows.filter { it.mode == mode && it.threadCount == threadCount }
             if (samples.isEmpty()) return@mapNotNull null
 
-            val successful = samples.filter { it.success && it.throughputMiBps != null && it.elapsedMillis != null }
+            val successful = samples.filter { it.success && it.elapsedMillis != null }
             if (successful.isEmpty()) {
                 return@mapNotNull BenchmarkThreadSummary(
                     threadCount = threadCount,
-                    averageThroughputMiBps = 0.0,
                     averageElapsedMillis = 0.0,
                     successRate = 0.0,
                 )
             }
 
-            val avgThroughput = successful.mapNotNull { it.throughputMiBps }.average()
             val avgElapsed = successful.mapNotNull { it.elapsedMillis }.average()
             val successRate = successful.size.toDouble() / samples.size.toDouble()
 
             BenchmarkThreadSummary(
                 threadCount = threadCount,
-                averageThroughputMiBps = round3(avgThroughput),
                 averageElapsedMillis = round3(avgElapsed),
                 successRate = round3(successRate),
             )
         }
 
         if (threadSummaries.isEmpty()) return@mapNotNull null
-        val best = threadSummaries.maxByOrNull { it.averageThroughputMiBps }
+        val best = threadSummaries
+            .filter { it.successRate > 0.0 }
+            .minByOrNull { it.averageElapsedMillis }
+            ?: threadSummaries.maxByOrNull { it.successRate }
             ?: return@mapNotNull null
 
         BenchmarkModeSummary(
             mode = mode,
             threadSummaries = threadSummaries,
             bestThreadCount = best.threadCount,
-            bestAverageThroughputMiBps = best.averageThroughputMiBps,
+            bestAverageElapsedMillis = best.averageElapsedMillis,
         )
     }
 
-    val naiveBest = modeSummaries.firstOrNull { it.mode == "naive" }?.bestAverageThroughputMiBps
-    val optimizedBest = modeSummaries.firstOrNull { it.mode == "optimized" }?.bestAverageThroughputMiBps
-    val diff = if (naiveBest != null && optimizedBest != null && naiveBest > 0.0) {
-        OptimizedVsNaiveSummary(speedupAtModeOptimum = round3(optimizedBest / naiveBest))
+    val naiveBest = modeSummaries.firstOrNull { it.mode == "naive" }?.bestAverageElapsedMillis
+    val optimizedBest = modeSummaries.firstOrNull { it.mode == "optimized" }?.bestAverageElapsedMillis
+    val diff = if (naiveBest != null && optimizedBest != null && optimizedBest > 0.0) {
+        OptimizedVsNaiveSummary(speedupAtModeOptimum = round3(naiveBest / optimizedBest))
     } else {
         null
     }
@@ -550,6 +586,25 @@ private fun BenchmarkReport.toJson(): String {
     sb.field("requestTimeoutMs", benchmark.requestTimeoutMs, comma = false)
     sb.append("},")
 
+    sb.append("\"warmups\":[")
+    warmups.forEachIndexed { index, run ->
+        if (index > 0) sb.append(',')
+        sb.append('{')
+        sb.field("mode", run.mode)
+        sb.field("threadCount", run.threadCount)
+        sb.field("warmupIteration", run.warmupIteration)
+        sb.field("chunkSizeBytes", run.chunkSizeBytes)
+        sb.field("ioBufferBytes", run.ioBufferBytes)
+        sb.nullableField("elapsedMillis", run.elapsedMillis)
+        sb.nullableField("bytesDownloaded", run.bytesDownloaded)
+        sb.nullableField("sha256", run.sha256)
+        sb.field("checksumMatch", run.checksumMatch)
+        sb.field("success", run.success)
+        sb.nullableField("error", run.error, comma = false)
+        sb.append('}')
+    }
+    sb.append("],")
+
     sb.append("\"runs\":[")
     runs.forEachIndexed { index, run ->
         if (index > 0) sb.append(',')
@@ -561,7 +616,6 @@ private fun BenchmarkReport.toJson(): String {
         sb.field("ioBufferBytes", run.ioBufferBytes)
         sb.nullableField("elapsedMillis", run.elapsedMillis)
         sb.nullableField("bytesDownloaded", run.bytesDownloaded)
-        sb.nullableField("throughputMiBps", run.throughputMiBps)
         sb.nullableField("sha256", run.sha256)
         sb.field("checksumMatch", run.checksumMatch)
         sb.field("success", run.success)
@@ -577,13 +631,12 @@ private fun BenchmarkReport.toJson(): String {
         sb.append('{')
         sb.field("mode", modeSummary.mode)
         sb.field("bestThreadCount", modeSummary.bestThreadCount)
-        sb.field("bestAverageThroughputMiBps", modeSummary.bestAverageThroughputMiBps)
+        sb.field("bestAverageElapsedMillis", modeSummary.bestAverageElapsedMillis)
         sb.append("\"threadSummaries\":[")
         modeSummary.threadSummaries.forEachIndexed { tIndex, threadSummary ->
             if (tIndex > 0) sb.append(',')
             sb.append('{')
             sb.field("threadCount", threadSummary.threadCount)
-            sb.field("averageThroughputMiBps", threadSummary.averageThroughputMiBps)
             sb.field("averageElapsedMillis", threadSummary.averageElapsedMillis)
             sb.field("successRate", threadSummary.successRate, comma = false)
             sb.append('}')
