@@ -158,5 +158,63 @@ internal fun BenchmarkReport.toJson(): String {
     sb.append('}')
 
     sb.append('}')
-    return sb.toString()
+    return prettyPrintJson(sb.toString())
+}
+
+private fun prettyPrintJson(compactJson: String): String {
+    val out = StringBuilder(compactJson.length + 1024)
+    var indentLevel = 0
+    var inString = false
+    var escaped = false
+
+    fun appendIndent() {
+        repeat(indentLevel) { out.append("  ") }
+    }
+
+    compactJson.forEach { char ->
+        when {
+            escaped -> {
+                out.append(char)
+                escaped = false
+            }
+
+            char == '\\' -> {
+                out.append(char)
+                escaped = true
+            }
+
+            char == '"' -> {
+                out.append(char)
+                inString = !inString
+            }
+
+            inString -> out.append(char)
+
+            char == '{' || char == '[' -> {
+                out.append(char).append('\n')
+                indentLevel += 1
+                appendIndent()
+            }
+
+            char == '}' || char == ']' -> {
+                out.append('\n')
+                indentLevel -= 1
+                appendIndent()
+                out.append(char)
+            }
+
+            char == ',' -> {
+                out.append(char).append('\n')
+                appendIndent()
+            }
+
+            char == ':' -> out.append(": ")
+
+            char.isWhitespace() -> Unit
+
+            else -> out.append(char)
+        }
+    }
+
+    return out.toString()
 }
