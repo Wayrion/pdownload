@@ -14,8 +14,10 @@ import java.util.concurrent.Executors
 
 class LibraryTest : StringSpec({
 
-    "parallel chunks: 200KB file downloads and content matches" {
-        val data = buildData(200 * 1024)
+    "parallel chunks: dynamic file size based on thread count downloads and content matches" {
+        val threadCount = 8
+        val chunkSizeBytes = 16 * 1024L
+        val data = buildData(dynamicPayloadSizeBytes(threadCount, chunkSizeBytes))
         val server = TestRangeServer(data)
         server.start()
 
@@ -26,10 +28,11 @@ class LibraryTest : StringSpec({
             val result = downloader.download(
                 url = server.url("/file"),
                 destination = output,
-                config = DownloadConfig(threadCount = 8, chunkSizeBytes = 16 * 1024),
+                config = DownloadConfig(threadCount = threadCount, chunkSizeBytes = chunkSizeBytes),
             )
 
             result.bytesDownloaded shouldBe data.size.toLong()
+            result.chunksDownloaded shouldBe 16
             Files.readAllBytes(output).toList() shouldBe data.toList()
         } finally {
             server.stop()
@@ -37,7 +40,9 @@ class LibraryTest : StringSpec({
     }
 
     "non-even boundaries: size not divisible by chunk size still matches" {
-        val data = buildData(200 * 1024 + 123)
+        val threadCount = 8
+        val chunkSizeBytes = 8 * 1024L
+        val data = buildData(dynamicPayloadSizeBytes(threadCount, chunkSizeBytes, remainderBytes = 123))
         val server = TestRangeServer(data)
         server.start()
 
@@ -48,10 +53,65 @@ class LibraryTest : StringSpec({
             val result = downloader.download(
                 url = server.url("/file"),
                 destination = output,
-                config = DownloadConfig(threadCount = 8, chunkSizeBytes = 8 * 1024),
+                config = DownloadConfig(threadCount = threadCount, chunkSizeBytes = chunkSizeBytes),
             )
 
             result.bytesDownloaded shouldBe data.size.toLong()
+            result.chunksDownloaded shouldBe 17
+            Files.readAllBytes(output).toList() shouldBe data.toList()
+        } finally {
+            server.stop()
+        }
+    }
+
+    "optimized mode: content matches and chunking is correct" {
+        val data = buildData(256 * 1024 + 17)
+        val server = TestRangeServer(data)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("optimized-mode", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            val result = downloader.download(
+                url = server.url("/file"),
+                destination = output,
+                config = DownloadConfig(
+                    threadCount = 8,
+                    chunkSizeBytes = 32 * 1024,
+                    mode = DownloadMode.OPTIMIZED,
+                ),
+            )
+
+            result.bytesDownloaded shouldBe data.size.toLong()
+            result.chunksDownloaded shouldBe 9
+            Files.readAllBytes(output).toList() shouldBe data.toList()
+        } finally {
+            server.stop()
+        }
+    }
+
+    "processes mode: content matches and chunking is correct" {
+        val data = buildData(96 * 1024 + 5)
+        val server = TestRangeServer(data)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("process-mode", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            val result = downloader.download(
+                url = server.url("/file"),
+                destination = output,
+                config = DownloadConfig(
+                    threadCount = 4,
+                    chunkSizeBytes = 16 * 1024,
+                    mode = DownloadMode.PROCESSES,
+                ),
+            )
+
+            result.bytesDownloaded shouldBe data.size.toLong()
+            result.chunksDownloaded shouldBe 7
             Files.readAllBytes(output).toList() shouldBe data.toList()
         } finally {
             server.stop()
@@ -112,6 +172,68 @@ class LibraryTest : StringSpec({
             server.stop()
         }
     }
+
+    "checksum mismatch: downloader fails when expected hash is wrong" {
+        val data = buildData(64 * 1024)
+        val server = TestRangeServer(data)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("checksum-mismatch", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            shouldThrow<IllegalStateException> {
+                downloader.download(
+                    url = server.url("/file"),
+                    destination = output,
+                    config = DownloadConfig(
+                        threadCount = 4,
+                        chunkSizeBytes = 16 * 1024,
+                        expectedSha256 = "0000000000000000000000000000000000000000000000000000000000000000",
+                    ),
+                )
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    "metadata validation: missing Accept-Ranges header fails" {
+        val data = buildData(8 * 1024)
+        val server = TestRangeServer(data, acceptRangesHeader = null)
+        server.start()
+
+        try {
+            val downloader = ParallelFileDownloader()
+
+            shouldThrow<IllegalStateException> {
+                downloader.fetchMetadata(server.url("/file"))
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    "config validation: threadCount must be greater than zero" {
+        val data = buildData(4 * 1024)
+        val server = TestRangeServer(data)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("invalid-config", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            shouldThrow<IllegalArgumentException> {
+                downloader.download(
+                    url = server.url("/file"),
+                    destination = output,
+                    config = DownloadConfig(threadCount = 0),
+                )
+            }
+        } finally {
+            server.stop()
+        }
+    }
 })
 
 private fun buildData(size: Int): ByteArray {
@@ -122,10 +244,20 @@ private fun buildData(size: Int): ByteArray {
     return bytes
 }
 
+private fun dynamicPayloadSizeBytes(
+    threadCount: Int,
+    chunkSizeBytes: Long,
+    remainderBytes: Int = 0,
+): Int {
+    val chunkCount = threadCount * 2
+    return (chunkCount * chunkSizeBytes + remainderBytes.toLong()).toInt()
+}
+
 private class TestRangeServer(
     private val data: ByteArray,
     private val failFirstForRange: String? = null,
     private val alwaysFailForRange: String? = null,
+    private val acceptRangesHeader: String? = "bytes",
 ) {
     private val failedOnce = ConcurrentHashMap.newKeySet<String>()
     private val server = HttpServer.create(InetSocketAddress(0), 0)
@@ -165,7 +297,9 @@ private class TestRangeServer(
         }
 
         private fun handleHead(exchange: HttpExchange) {
-            exchange.responseHeaders.add("Accept-Ranges", "bytes")
+            if (acceptRangesHeader != null) {
+                exchange.responseHeaders.add("Accept-Ranges", acceptRangesHeader)
+            }
             exchange.responseHeaders.add("Content-Length", data.size.toString())
             exchange.sendResponseHeaders(200, -1)
         }
@@ -189,7 +323,9 @@ private class TestRangeServer(
             val (start, end) = parseRange(rangeHeader, data.size)
             val length = end - start + 1
 
-            exchange.responseHeaders.add("Accept-Ranges", "bytes")
+            if (acceptRangesHeader != null) {
+                exchange.responseHeaders.add("Accept-Ranges", acceptRangesHeader)
+            }
             exchange.responseHeaders.add("Content-Range", "bytes $start-$end/${data.size}")
             exchange.responseHeaders.add("Content-Length", length.toString())
             exchange.sendResponseHeaders(206, length.toLong())
