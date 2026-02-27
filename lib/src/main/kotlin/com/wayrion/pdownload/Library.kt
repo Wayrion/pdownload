@@ -324,49 +324,28 @@ class ParallelFileDownloader(
         fileChannel: FileChannel,
         config: DownloadConfig,
     ) {
-        var attempt = 0
-        while (true) {
-            try {
-                val request = HttpRequest.newBuilder(URI.create(url))
-                    .GET()
-                    .timeout(config.requestTimeout)
-                    .header("Range", "bytes=${chunk.startInclusive}-${chunk.endInclusive}")
-                    .build()
-
-                val response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
-                if (response.statusCode() != 206) {
-                    throw IllegalStateException(
-                        "Expected 206 for chunk ${chunk.index}, got ${response.statusCode()}",
-                    )
-                }
-
-                val writePosition = when (config.mode) {
-                    DownloadMode.NAIVE -> naiveChunkWriter.write(response, chunk, fileChannel, config)
-                    DownloadMode.OPTIMIZED -> optimizedChunkWriter.write(response, chunk, fileChannel, config)
-                    DownloadMode.PROCESSES -> error("Process mode does not use in-process chunk writers")
-                }
-
-                val expectedBytes = chunk.endInclusive - chunk.startInclusive + 1L
-                val actualBytes = writePosition - chunk.startInclusive
-                if (actualBytes != expectedBytes) {
-                    throw IllegalStateException(
-                        "Chunk ${chunk.index} size mismatch. expected=$expectedBytes actual=$actualBytes",
-                    )
-                }
-
-                return
-            } catch (exception: Exception) {
-                if (attempt >= config.maxRetriesPerChunk) {
-                    throw exception
-                }
-                attempt += 1
-                try {
-                    Thread.sleep(config.retryDelayMillis)
-                } catch (interrupted: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw interrupted
-                }
+        val writePosition = fetchChunkWithRetry(
+            client = client,
+            url = url,
+            startInclusive = chunk.startInclusive,
+            endInclusive = chunk.endInclusive,
+            requestTimeout = config.requestTimeout,
+            maxRetries = config.maxRetriesPerChunk,
+            retryDelayMillis = config.retryDelayMillis,
+        ) { response ->
+            when (config.mode) {
+                DownloadMode.NAIVE -> naiveChunkWriter.write(response, chunk, fileChannel, config)
+                DownloadMode.OPTIMIZED -> optimizedChunkWriter.write(response, chunk, fileChannel, config)
+                DownloadMode.PROCESSES -> error("Process mode does not use in-process chunk writers")
             }
+        }
+
+        val actualBytes = writePosition - chunk.startInclusive
+        val expectedBytes = expectedChunkBytes(chunk.startInclusive, chunk.endInclusive)
+        if (actualBytes != expectedBytes) {
+            throw IllegalStateException(
+                "Chunk ${chunk.index} size mismatch. expected=$expectedBytes actual=$actualBytes",
+            )
         }
     }
 }

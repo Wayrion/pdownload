@@ -1,9 +1,6 @@
 package com.wayrion.pdownload
 
-import java.net.URI
 import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -26,17 +23,11 @@ fun main(args: Array<String>) {
 }
 
 private fun parseWorkerOptions(args: Array<String>): WorkerOptions {
-    val values = mutableMapOf<String, String>()
-    var index = 0
-    while (index < args.size) {
-        val key = args[index]
-        if (!key.startsWith("--")) error("Invalid argument: $key")
-        if (index + 1 >= args.size) error("Missing value for $key")
-        values[key] = args[index + 1]
-        index += 2
+    val values = parseCliArgs(args, sanitizeFlags = false).associate { parsed ->
+        parsed.flag to (parsed.value ?: "")
     }
 
-    fun required(name: String): String = values[name] ?: error("Missing required $name")
+    fun required(name: String): String = values[name]?.takeIf { it.isNotEmpty() } ?: cliMissingRequired(name)
 
     return WorkerOptions(
         url = required("--url"),
@@ -60,51 +51,30 @@ private fun downloadChunk(options: WorkerOptions) {
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
 
-    var attempt = 0
-    while (true) {
-        try {
-            val request = HttpRequest.newBuilder(URI.create(options.url))
-                .GET()
-                .timeout(Duration.ofMillis(options.requestTimeoutMs))
-                .header("Range", "bytes=${options.start}-${options.end}")
-                .build()
+    fetchChunkWithRetry(
+        client = client,
+        url = options.url,
+        startInclusive = options.start,
+        endInclusive = options.end,
+        requestTimeout = Duration.ofMillis(options.requestTimeoutMs),
+        maxRetries = options.maxRetries,
+        retryDelayMillis = options.retryDelayMs,
+    ) { response ->
+        Files.newOutputStream(
+            options.output,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE,
+        ).use { out ->
+            response.body().use { input ->
+                input.copyTo(out)
+            }
+        }
+    }
 
-            val response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
-            if (response.statusCode() != 206) {
-                error("Expected 206, got ${response.statusCode()}")
-            }
-
-            Files.newOutputStream(
-                options.output,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE,
-            ).use { out ->
-                response.body().use { input ->
-                    input.copyTo(out)
-                }
-            }
-
-            val expectedBytes = options.end - options.start + 1L
-            val actualBytes = Files.size(options.output)
-            if (actualBytes != expectedBytes) {
-                error("Chunk size mismatch. expected=$expectedBytes actual=$actualBytes")
-            }
-            return
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw interrupted
-         } catch (exception: Exception) {
-             if (attempt >= options.maxRetries) {
-                 throw exception
-             }
-             attempt += 1
-            try {
-                Thread.sleep(options.retryDelayMs)
-            } catch (interrupted: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw interrupted
-            }
-         }
-     }
- }
+    val expectedBytes = expectedChunkBytes(options.start, options.end)
+    val actualBytes = Files.size(options.output)
+    if (actualBytes != expectedBytes) {
+        error("Download error: chunk size mismatch. expected=$expectedBytes actual=$actualBytes")
+    }
+}

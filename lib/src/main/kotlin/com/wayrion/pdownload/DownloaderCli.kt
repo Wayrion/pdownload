@@ -13,8 +13,8 @@ fun main(args: Array<String>) {
         return
     }
 
-    val url = options.url ?: error("Missing required --url")
-    val output = options.output ?: error("Missing required --output")
+    val url = options.url ?: cliMissingRequired("--url")
+    val output = options.output ?: cliMissingRequired("--output")
 
     val config = DownloadConfig(
         threadCount = options.threads ?: DEFAULT_THREADS,
@@ -73,35 +73,28 @@ private data class CliOptions(
     companion object {
         fun parse(args: Array<String>): CliOptions {
             var options = CliOptions()
-            var index = 0
+            val parsed = parseCliArgs(
+                args = args,
+                flagsWithoutValue = setOf("--help", "-h"),
+                sanitizeFlags = true,
+            )
 
-            fun requireValue(flag: String): String {
-                if (index + 1 >= args.size) {
-                    error("Missing value for $flag")
-                }
-                index += 1
-                return args[index]
-            }
-
-            while (index < args.size) {
-                val rawArg = args[index]
-                val arg = rawArg.trim().trimEnd('.', ',', ';', ':')
-                when (arg) {
-                    "--url" -> options = options.copy(url = requireValue(arg))
-                    "--output" -> options = options.copy(output = requireValue(arg))
-                    "--threads" -> options = options.copy(threads = requireValue(arg).toInt())
-                    "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = requireValue(arg).toLong())
-                    "--max-retries" -> options = options.copy(maxRetries = requireValue(arg).toInt())
-                    "--retry-delay-ms" -> options = options.copy(retryDelayMs = requireValue(arg).toLong())
-                    "--mode" -> options = options.copy(mode = parseMode(requireValue(arg)))
-                    "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = requireValue(arg).toInt())
-                    "--expected-sha256" -> options = options.copy(expectedSha256 = requireValue(arg))
-                    "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = requireValue(arg).toLong())
-                    "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = requireValue(arg).toLong())
+            parsed.forEach { arg ->
+                when (arg.flag) {
+                    "--url" -> options = options.copy(url = arg.value!!)
+                    "--output" -> options = options.copy(output = arg.value!!)
+                    "--threads" -> options = options.copy(threads = arg.value!!.toInt())
+                    "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = arg.value!!.toLong())
+                    "--max-retries" -> options = options.copy(maxRetries = arg.value!!.toInt())
+                    "--retry-delay-ms" -> options = options.copy(retryDelayMs = arg.value!!.toLong())
+                    "--mode" -> options = options.copy(mode = parseMode(arg.value!!))
+                    "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = arg.value!!.toInt())
+                    "--expected-sha256" -> options = options.copy(expectedSha256 = arg.value!!)
+                    "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = arg.value!!.toLong())
+                    "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = arg.value!!.toLong())
                     "--help", "-h" -> options = options.copy(showHelp = true)
-                    else -> error("Unknown flag: $rawArg")
+                    else -> cliUnknownFlag(arg.raw)
                 }
-                index += 1
             }
 
             return options
@@ -112,7 +105,7 @@ private data class CliOptions(
                 "naive" -> DownloadMode.NAIVE
                 "optimized" -> DownloadMode.OPTIMIZED
                 "processes" -> DownloadMode.PROCESSES
-                else -> error("Invalid --mode value: $value")
+                else -> cliInvalidValue("--mode", value, "naive|optimized|processes")
             }
         }
     }

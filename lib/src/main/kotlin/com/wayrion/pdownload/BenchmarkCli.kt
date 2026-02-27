@@ -21,7 +21,7 @@ fun benchmarkMain(args: Array<String>) {
         return
     }
 
-    val url = options.url ?: error("Missing required --url")
+    val url = options.url ?: cliMissingRequired("--url")
     val outputJson = Path.of(options.outputJson ?: "build/benchmark-results.json")
     val workDir = Path.of(options.workDir ?: "build/benchmark-downloads")
 
@@ -57,39 +57,20 @@ fun benchmarkMain(args: Array<String>) {
                 val warmupOutput = workDir.resolve(
                     "warmup-${mode.name.lowercase()}-$threads-$warmupIteration-${UUID.randomUUID()}.bin",
                 )
-                var elapsedMillis: Long? = null
-                var bytesDownloaded: Long? = null
-                var checksum: String? = null
-                var checksumMatch = false
-                var success = false
-                var errorMessage: String? = null
-
-                try {
-                    val result = downloader.download(
-                        url = url,
-                        destination = warmupOutput,
-                        config = DownloadConfig(
-                            threadCount = threads,
-                            chunkSizeBytes = chunkSizeBytes,
-                            connectTimeout = Duration.ofMillis(connectTimeoutMs),
-                            requestTimeout = Duration.ofMillis(requestTimeoutMs),
-                            maxRetriesPerChunk = maxRetries,
-                            retryDelayMillis = retryDelayMs,
-                            mode = mode,
-                            ioBufferBytes = ioBufferBytes,
-                            expectedSha256 = expectedSha256,
-                        ),
-                    )
-                    elapsedMillis = result.elapsedMillis
-                    bytesDownloaded = result.bytesDownloaded
-                    checksum = sha256(warmupOutput)
-                    checksumMatch = checksum.equals(expectedSha256, ignoreCase = true)
-                    success = checksumMatch
-                } catch (exception: Exception) {
-                    errorMessage = exception.message ?: exception::class.java.simpleName
-                } finally {
-                    Files.deleteIfExists(warmupOutput)
-                }
+                val attempt = runDownloadAttempt(
+                    downloader = downloader,
+                    url = url,
+                    destination = warmupOutput,
+                    mode = mode,
+                    threads = threads,
+                    chunkSizeBytes = chunkSizeBytes,
+                    ioBufferBytes = ioBufferBytes,
+                    connectTimeoutMs = connectTimeoutMs,
+                    requestTimeoutMs = requestTimeoutMs,
+                    maxRetries = maxRetries,
+                    retryDelayMs = retryDelayMs,
+                    expectedSha256 = expectedSha256,
+                )
 
                 warmupRows += BenchmarkWarmupRow(
                     mode = mode.name.lowercase(),
@@ -97,50 +78,31 @@ fun benchmarkMain(args: Array<String>) {
                     warmupIteration = warmupIteration,
                     chunkSizeBytes = chunkSizeBytes,
                     ioBufferBytes = ioBufferBytes,
-                    elapsedMillis = elapsedMillis,
-                    bytesDownloaded = bytesDownloaded,
-                    sha256 = checksum,
-                    checksumMatch = checksumMatch,
-                    success = success,
-                    error = errorMessage,
+                    elapsedMillis = attempt.elapsedMillis,
+                    bytesDownloaded = attempt.bytesDownloaded,
+                    sha256 = attempt.sha256,
+                    checksumMatch = attempt.checksumMatch,
+                    success = attempt.success,
+                    error = attempt.error,
                 )
             }
 
             for (iteration in 1..iterations) {
                 val output = workDir.resolve("download-${mode.name.lowercase()}-$threads-$iteration-${UUID.randomUUID()}.bin")
-                var elapsedMillis: Long? = null
-                var bytesDownloaded: Long? = null
-                var checksum: String? = null
-                var checksumMatch = false
-                var success = false
-                var errorMessage: String? = null
-
-                try {
-                    val result = downloader.download(
-                        url = url,
-                        destination = output,
-                        config = DownloadConfig(
-                            threadCount = threads,
-                            chunkSizeBytes = chunkSizeBytes,
-                            connectTimeout = Duration.ofMillis(connectTimeoutMs),
-                            requestTimeout = Duration.ofMillis(requestTimeoutMs),
-                            maxRetriesPerChunk = maxRetries,
-                            retryDelayMillis = retryDelayMs,
-                            mode = mode,
-                            ioBufferBytes = ioBufferBytes,
-                            expectedSha256 = expectedSha256,
-                        ),
-                    )
-                    elapsedMillis = result.elapsedMillis
-                    bytesDownloaded = result.bytesDownloaded
-                    checksum = sha256(output)
-                    checksumMatch = checksum.equals(expectedSha256, ignoreCase = true)
-                    success = checksumMatch
-                } catch (exception: Exception) {
-                    errorMessage = exception.message ?: exception::class.java.simpleName
-                } finally {
-                    Files.deleteIfExists(output)
-                }
+                val attempt = runDownloadAttempt(
+                    downloader = downloader,
+                    url = url,
+                    destination = output,
+                    mode = mode,
+                    threads = threads,
+                    chunkSizeBytes = chunkSizeBytes,
+                    ioBufferBytes = ioBufferBytes,
+                    connectTimeoutMs = connectTimeoutMs,
+                    requestTimeoutMs = requestTimeoutMs,
+                    maxRetries = maxRetries,
+                    retryDelayMs = retryDelayMs,
+                    expectedSha256 = expectedSha256,
+                )
 
                 runRows += BenchmarkRunRow(
                     mode = mode.name.lowercase(),
@@ -148,12 +110,12 @@ fun benchmarkMain(args: Array<String>) {
                     iteration = iteration,
                     chunkSizeBytes = chunkSizeBytes,
                     ioBufferBytes = ioBufferBytes,
-                    elapsedMillis = elapsedMillis,
-                    bytesDownloaded = bytesDownloaded,
-                    sha256 = checksum,
-                    checksumMatch = checksumMatch,
-                    success = success,
-                    error = errorMessage,
+                    elapsedMillis = attempt.elapsedMillis,
+                    bytesDownloaded = attempt.bytesDownloaded,
+                    sha256 = attempt.sha256,
+                    checksumMatch = attempt.checksumMatch,
+                    success = attempt.success,
+                    error = attempt.error,
                 )
             }
         }
@@ -206,7 +168,7 @@ private fun resolveModes(options: BenchmarkOptions): List<DownloadMode> {
             "optimized" -> listOf(DownloadMode.OPTIMIZED)
             "processes" -> listOf(DownloadMode.PROCESSES)
             "both" -> listOf(DownloadMode.NAIVE, DownloadMode.OPTIMIZED, DownloadMode.PROCESSES)
-            else -> error("Invalid --mode value: ${options.mode}")
+            else -> cliInvalidValue("--mode", options.mode, "naive|optimized|processes|both")
         }
     }
     return options.modes ?: listOf(DownloadMode.NAIVE, DownloadMode.OPTIMIZED, DownloadMode.PROCESSES)
@@ -257,36 +219,31 @@ private data class BenchmarkOptions(
     companion object {
         fun parse(args: Array<String>): BenchmarkOptions {
             var options = BenchmarkOptions()
-            var index = 0
+            val parsed = parseCliArgs(
+                args = args,
+                flagsWithoutValue = setOf("--help", "-h"),
+                sanitizeFlags = true,
+            )
 
-            fun requireValue(flag: String): String {
-                if (index + 1 >= args.size) error("Missing value for $flag")
-                index += 1
-                return args[index]
-            }
-
-            while (index < args.size) {
-                val rawArg = args[index]
-                val arg = rawArg.trim().trimEnd('.', ',', ';', ':')
-                when (arg) {
-                    "--url" -> options = options.copy(url = requireValue(arg))
-                    "--output-json" -> options = options.copy(outputJson = requireValue(arg))
-                    "--work-dir" -> options = options.copy(workDir = requireValue(arg))
-                    "--mode" -> options = options.copy(mode = requireValue(arg).trim().lowercase())
-                    "--threads" -> options = options.copy(threadCounts = parseThreads(requireValue(arg)))
-                    "--modes" -> options = options.copy(modes = parseModes(requireValue(arg)))
-                    "--warmup-iterations" -> options = options.copy(warmupIterations = requireValue(arg).toInt())
-                    "--iterations" -> options = options.copy(iterations = requireValue(arg).toInt())
-                    "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = requireValue(arg).toLong())
-                    "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = requireValue(arg).toInt())
-                    "--max-retries" -> options = options.copy(maxRetries = requireValue(arg).toInt())
-                    "--retry-delay-ms" -> options = options.copy(retryDelayMs = requireValue(arg).toLong())
-                    "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = requireValue(arg).toLong())
-                    "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = requireValue(arg).toLong())
+            parsed.forEach { arg ->
+                when (arg.flag) {
+                    "--url" -> options = options.copy(url = arg.value!!)
+                    "--output-json" -> options = options.copy(outputJson = arg.value!!)
+                    "--work-dir" -> options = options.copy(workDir = arg.value!!)
+                    "--mode" -> options = options.copy(mode = arg.value!!.trim().lowercase())
+                    "--threads" -> options = options.copy(threadCounts = parseThreads(arg.value!!))
+                    "--modes" -> options = options.copy(modes = parseModes(arg.value!!))
+                    "--warmup-iterations" -> options = options.copy(warmupIterations = arg.value!!.toInt())
+                    "--iterations" -> options = options.copy(iterations = arg.value!!.toInt())
+                    "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = arg.value!!.toLong())
+                    "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = arg.value!!.toInt())
+                    "--max-retries" -> options = options.copy(maxRetries = arg.value!!.toInt())
+                    "--retry-delay-ms" -> options = options.copy(retryDelayMs = arg.value!!.toLong())
+                    "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = arg.value!!.toLong())
+                    "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = arg.value!!.toLong())
                     "--help", "-h" -> options = options.copy(showHelp = true)
-                    else -> error("Unknown flag: $rawArg")
+                    else -> cliUnknownFlag(arg.raw)
                 }
-                index += 1
             }
             return options
         }
@@ -301,11 +258,78 @@ private data class BenchmarkOptions(
                     "naive" -> DownloadMode.NAIVE
                     "optimized" -> DownloadMode.OPTIMIZED
                     "processes" -> DownloadMode.PROCESSES
-                    else -> error("Invalid mode: $token")
+                    else -> cliInvalidValue("--modes", token, "naive|optimized|processes")
                 }
             }
         }
     }
+}
+
+private data class DownloadAttempt(
+    val elapsedMillis: Long?,
+    val bytesDownloaded: Long?,
+    val sha256: String?,
+    val checksumMatch: Boolean,
+    val success: Boolean,
+    val error: String?,
+)
+
+private fun runDownloadAttempt(
+    downloader: ParallelFileDownloader,
+    url: String,
+    destination: Path,
+    mode: DownloadMode,
+    threads: Int,
+    chunkSizeBytes: Long,
+    ioBufferBytes: Int,
+    connectTimeoutMs: Long,
+    requestTimeoutMs: Long,
+    maxRetries: Int,
+    retryDelayMs: Long,
+    expectedSha256: String,
+): DownloadAttempt {
+    var elapsedMillis: Long? = null
+    var bytesDownloaded: Long? = null
+    var checksum: String? = null
+    var checksumMatch = false
+    var success = false
+    var errorMessage: String? = null
+
+    try {
+        val result = downloader.download(
+            url = url,
+            destination = destination,
+            config = DownloadConfig(
+                threadCount = threads,
+                chunkSizeBytes = chunkSizeBytes,
+                connectTimeout = Duration.ofMillis(connectTimeoutMs),
+                requestTimeout = Duration.ofMillis(requestTimeoutMs),
+                maxRetriesPerChunk = maxRetries,
+                retryDelayMillis = retryDelayMs,
+                mode = mode,
+                ioBufferBytes = ioBufferBytes,
+                expectedSha256 = expectedSha256,
+            ),
+        )
+        elapsedMillis = result.elapsedMillis
+        bytesDownloaded = result.bytesDownloaded
+        checksum = sha256(destination)
+        checksumMatch = checksum.equals(expectedSha256, ignoreCase = true)
+        success = checksumMatch
+    } catch (exception: Exception) {
+        errorMessage = exception.message ?: exception::class.java.simpleName
+    } finally {
+        Files.deleteIfExists(destination)
+    }
+
+    return DownloadAttempt(
+        elapsedMillis = elapsedMillis,
+        bytesDownloaded = bytesDownloaded,
+        sha256 = checksum,
+        checksumMatch = checksumMatch,
+        success = success,
+        error = errorMessage,
+    )
 }
 
 data class BenchmarkTarget(
@@ -476,7 +500,7 @@ private fun fetchSha256OverHttp(client: HttpClient, url: String, timeout: Durati
         .build()
     val response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
     if (response.statusCode() !in 200..299) {
-        error("Failed to fetch checksum source bytes: status=${response.statusCode()}")
+        error("Download error: failed to fetch checksum source bytes: status=${response.statusCode()}")
     }
 
     val tempFile = Files.createTempFile("benchmark-source", ".bin")

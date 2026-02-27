@@ -146,6 +146,35 @@ class LibraryTest : StringSpec({
         }
     }
 
+    "process mode retry: one chunk returns 500 once then succeeds" {
+        val data = buildData(128 * 1024)
+        val targetRange = "bytes=32768-65535"
+        val server = TestRangeServer(data, failFirstForRange = targetRange)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("process-retry-success", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            val result = downloader.download(
+                url = server.url("/file"),
+                destination = output,
+                config = DownloadConfig(
+                    threadCount = 4,
+                    chunkSizeBytes = 32 * 1024,
+                    maxRetriesPerChunk = 1,
+                    retryDelayMillis = 10,
+                    mode = DownloadMode.PROCESSES,
+                ),
+            )
+
+            result.bytesDownloaded shouldBe data.size.toLong()
+            Files.readAllBytes(output).toList() shouldBe data.toList()
+        } finally {
+            server.stop()
+        }
+    }
+
     "retry exhausted: downloader fails when a chunk keeps failing" {
         val data = buildData(100 * 1024)
         val targetRange = "bytes=0-32767"
