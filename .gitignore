@@ -292,3 +292,4 @@ __marimo__/
 
 # Sample files
 sample.txt
+!docker/sample.txt

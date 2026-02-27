@@ -13,7 +13,7 @@ It includes:
 Build image:
 
 ```bash
-docker build -t pdownload-apache-h2 docker/apache
+docker build -t pdownload-apache-h2 docker
 ```
 
 Run with bundled sample file:
