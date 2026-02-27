@@ -11,11 +11,59 @@ from pathlib import Path
 from statistics import mean
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 # JetBrains brand-inspired palette for a bold dark theme
 JETBRAINS_BACKGROUND = "#0A0A0A"
 JETBRAINS_PANEL = "#121212"
 JETBRAINS_COLORS = ["#FF318C", "#FF6E4A", "#FFC110", "#21D789", "#3DDCFF"]
+HIGH_CONTRAST_BACKGROUND = "#000000"
+HIGH_CONTRAST_PANEL = "#111111"
+HIGH_CONTRAST_COLORS = ["#E60049", "#0BB4FF", "#50E991", "#E6D800", "#9B19F5"]
+BAR_HATCHES = ["/", "\\", "x", ".", "-"]
+
+ACTIVE_BACKGROUND = JETBRAINS_BACKGROUND
+ACTIVE_PANEL = JETBRAINS_PANEL
+ACTIVE_COLORS = JETBRAINS_COLORS[:]
+
+
+def apply_palette(palette: str) -> None:
+    global ACTIVE_BACKGROUND, ACTIVE_PANEL, ACTIVE_COLORS
+
+    if palette == "high-contrast":
+        ACTIVE_BACKGROUND = HIGH_CONTRAST_BACKGROUND
+        ACTIVE_PANEL = HIGH_CONTRAST_PANEL
+        ACTIVE_COLORS = HIGH_CONTRAST_COLORS[:]
+        return
+
+    ACTIVE_BACKGROUND = JETBRAINS_BACKGROUND
+    ACTIVE_PANEL = JETBRAINS_PANEL
+    ACTIVE_COLORS = JETBRAINS_COLORS[:]
+
+
+def mode_style(mode: str, index: int) -> dict:
+    """Return a stable style tuple for a benchmark mode."""
+    # Keep common modes consistent even if mode ordering changes.
+    fixed = {
+        "naive": {"color": ACTIVE_COLORS[0], "hatch": BAR_HATCHES[0]},
+        "optimized": {"color": ACTIVE_COLORS[3], "hatch": BAR_HATCHES[1]},
+        "processes": {"color": ACTIVE_COLORS[1], "hatch": BAR_HATCHES[2]},
+    }
+    if mode in fixed:
+        return fixed[mode]
+
+    return {
+        "color": ACTIVE_COLORS[index % len(ACTIVE_COLORS)],
+        "hatch": BAR_HATCHES[index % len(BAR_HATCHES)],
+    }
+
+
+def warmup_pair_style() -> dict[str, dict[str, str]]:
+    """Dedicated style pair for warmup chart (different from elapsed-by-threads colors)."""
+    return {
+        "before": {"color": ACTIVE_COLORS[2 % len(ACTIVE_COLORS)], "hatch": "//"},
+        "after": {"color": ACTIVE_COLORS[4 % len(ACTIVE_COLORS)], "hatch": "\\\\"},
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,15 +89,21 @@ def parse_args() -> argparse.Namespace:
         default="Parallel Downloader Benchmark",
         help="Optional title prefix for generated charts",
     )
+    parser.add_argument(
+        "--palette",
+        choices=["jetbrains", "high-contrast"],
+        default="jetbrains",
+        help="Color palette for charts (default: jetbrains)",
+    )
     return parser.parse_args()
 
 
 def configure_theme() -> None:
     plt.rcParams.update(
         {
-            "figure.facecolor": JETBRAINS_BACKGROUND,
-            "axes.facecolor": JETBRAINS_PANEL,
-            "savefig.facecolor": JETBRAINS_BACKGROUND,
+            "figure.facecolor": ACTIVE_BACKGROUND,
+            "axes.facecolor": ACTIVE_PANEL,
+            "savefig.facecolor": ACTIVE_BACKGROUND,
             "axes.edgecolor": "#2A2A2A",
             "axes.labelcolor": "#EAEAEA",
             "text.color": "#EAEAEA",
@@ -60,7 +114,7 @@ def configure_theme() -> None:
             "axes.grid": True,
             "font.size": 10,
             "legend.framealpha": 0.35,
-            "legend.facecolor": JETBRAINS_PANEL,
+            "legend.facecolor": ACTIVE_PANEL,
             "legend.edgecolor": "#404040",
         }
     )
@@ -127,6 +181,7 @@ def plot_metric(
     bar_width = group_width / max(1, len(mode_order))
 
     for index, mode in enumerate(mode_order):
+        style = mode_style(mode, index)
         means = metric_series.get(mode, {}).get("mean", [])
 
         if not means:
@@ -144,15 +199,15 @@ def plot_metric(
         ys = [item[1] for item in filtered]
 
         shifted = [x - (group_width / 2.0) + (index + 0.5) * bar_width for x in xs]
-        bar_colors = [JETBRAINS_COLORS[i % len(JETBRAINS_COLORS)] for i in range(len(shifted))]
         ax.bar(
             shifted,
             ys,
             width=bar_width,
-            color=bar_colors,
+            color=style["color"],
+            hatch=style["hatch"],
             alpha=0.9,
-            edgecolor="#242424",
-            linewidth=0.8,
+            edgecolor="#E6E6E6",
+            linewidth=1.1,
             label=mode,
         )
 
@@ -161,7 +216,22 @@ def plot_metric(
     ax.set_ylabel(y_label)
     ax.set_xticks(x_positions)
     ax.set_xticklabels([str(t) for t in threads])
-    ax.legend(title="Mode")
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("#8A8A8A")
+        spine.set_linewidth(1.2)
+
+    mode_handles = [
+        Patch(
+            facecolor=mode_style(mode, idx)["color"],
+            edgecolor="#E6E6E6",
+            hatch=mode_style(mode, idx)["hatch"],
+            linewidth=1.1,
+            label=mode,
+        )
+        for idx, mode in enumerate(mode_order)
+    ]
+    ax.legend(handles=mode_handles, title="Mode")
     fig.tight_layout()
     fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
@@ -169,6 +239,7 @@ def plot_metric(
 
 def main() -> None:
     args = parse_args()
+    apply_palette(args.palette)
     configure_theme()
 
     input_path = Path(args.input)
@@ -197,18 +268,9 @@ def main() -> None:
     plot_jit_warmup_comparison(
         warmups=warmups,
         runs=report.get("runs", []),
-        mode_order=modes,
-        title=f"{args.title_prefix} - Before vs After JIT Warmup",
-        output_path=output_dir / "jit_warmup_before_after.png",
-        dpi=args.dpi,
-    )
-    plot_jit_warmup_delta_by_threads(
-        warmups=warmups,
-        runs=report.get("runs", []),
-        mode_order=modes,
         threads=threads,
-        title=f"{args.title_prefix} - JIT Warmup Delta by Thread Count",
-        output_path=output_dir / "jit_warmup_delta_by_threads.png",
+        title=f"{args.title_prefix} - Naive Before vs After JIT Warmup",
+        output_path=output_dir / "jit_warmup_before_after.png",
         dpi=args.dpi,
     )
 
@@ -218,7 +280,7 @@ def main() -> None:
 def plot_jit_warmup_comparison(
     warmups: list[dict],
     runs: list[dict],
-    mode_order: list[str],
+    threads: list[int],
     title: str,
     output_path: Path,
     dpi: int,
@@ -226,25 +288,37 @@ def plot_jit_warmup_comparison(
     before_values: list[float] = []
     after_values: list[float] = []
     labels: list[str] = []
+    target_mode = "naive"
 
-    for mode in mode_order:
+    for thread in threads:
         if warmups:
             warmup_samples = [
                 float(item["elapsedMillis"])
                 for item in warmups
-                if item.get("mode") == mode and item.get("success", False) and item.get("elapsedMillis") is not None
+                if (
+                    item.get("mode") == target_mode
+                    and int(item.get("threadCount", 0)) == thread
+                    and item.get("success", False)
+                    and item.get("elapsedMillis") is not None
+                )
             ]
             measured_samples = [
                 float(item["elapsedMillis"])
                 for item in runs
-                if item.get("mode") == mode and item.get("success", False) and item.get("elapsedMillis") is not None
+                if (
+                    item.get("mode") == target_mode
+                    and int(item.get("threadCount", 0)) == thread
+                    and item.get("success", False)
+                    and item.get("elapsedMillis") is not None
+                )
             ]
         else:
             warmup_samples = [
                 float(item["elapsedMillis"])
                 for item in runs
                 if (
-                    item.get("mode") == mode
+                    item.get("mode") == target_mode
+                    and int(item.get("threadCount", 0)) == thread
                     and int(item.get("iteration", 0)) == 1
                     and item.get("success", False)
                     and item.get("elapsedMillis") is not None
@@ -254,7 +328,8 @@ def plot_jit_warmup_comparison(
                 float(item["elapsedMillis"])
                 for item in runs
                 if (
-                    item.get("mode") == mode
+                    item.get("mode") == target_mode
+                    and int(item.get("threadCount", 0)) == thread
                     and int(item.get("iteration", 0)) > 1
                     and item.get("success", False)
                     and item.get("elapsedMillis") is not None
@@ -264,7 +339,7 @@ def plot_jit_warmup_comparison(
         if not warmup_samples or not measured_samples:
             continue
 
-        labels.append(mode)
+        labels.append(str(thread))
         before_values.append(summarize_metric(warmup_samples))
         after_values.append(summarize_metric(measured_samples))
 
@@ -278,139 +353,46 @@ def plot_jit_warmup_comparison(
 
     before_positions = [x - bar_width / 2 for x in x_positions]
     after_positions = [x + bar_width / 2 for x in x_positions]
+    pair_style = warmup_pair_style()
+    before_style = pair_style["before"]
+    after_style = pair_style["after"]
 
     ax.bar(
         before_positions,
         before_values,
         width=bar_width,
-        color=JETBRAINS_COLORS[1 % len(JETBRAINS_COLORS)],
+        color=before_style["color"],
+        hatch=before_style["hatch"],
         alpha=0.9,
-        edgecolor="#242424",
-        linewidth=0.8,
+        edgecolor="#E6E6E6",
+        linewidth=1.1,
         label="Before warmup (warmup runs)",
     )
     ax.bar(
         after_positions,
         after_values,
         width=bar_width,
-        color=JETBRAINS_COLORS[3 % len(JETBRAINS_COLORS)],
+        color=after_style["color"],
+        hatch=after_style["hatch"],
         alpha=0.9,
-        edgecolor="#242424",
-        linewidth=0.8,
+        edgecolor="#E6E6E6",
+        linewidth=1.1,
         label="After warmup (measured runs)",
     )
 
     ax.set_title(title)
-    ax.set_xlabel("Mode")
+    ax.set_xlabel("Thread Count (naive mode)")
     ax.set_ylabel("Average Elapsed Time (ms)")
     ax.set_xticks(x_positions)
     ax.set_xticklabels(labels)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("#8A8A8A")
+        spine.set_linewidth(1.2)
     ax.legend()
     fig.tight_layout()
     fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
-
-
-def plot_jit_warmup_delta_by_threads(
-    warmups: list[dict],
-    runs: list[dict],
-    mode_order: list[str],
-    threads: list[int],
-    title: str,
-    output_path: Path,
-    dpi: int,
-) -> None:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    x_positions = [math.log2(t) for t in threads]
-    has_data = False
-
-    for index, mode in enumerate(mode_order):
-        deltas: list[float] = []
-        for thread in threads:
-            if warmups:
-                warmup_samples = [
-                    float(item["elapsedMillis"])
-                    for item in warmups
-                    if (
-                        item.get("mode") == mode
-                        and int(item.get("threadCount", 0)) == thread
-                        and item.get("success", False)
-                        and item.get("elapsedMillis") is not None
-                    )
-                ]
-                measured_samples = [
-                    float(item["elapsedMillis"])
-                    for item in runs
-                    if (
-                        item.get("mode") == mode
-                        and int(item.get("threadCount", 0)) == thread
-                        and item.get("success", False)
-                        and item.get("elapsedMillis") is not None
-                    )
-                ]
-            else:
-                warmup_samples = [
-                    float(item["elapsedMillis"])
-                    for item in runs
-                    if (
-                        item.get("mode") == mode
-                        and int(item.get("threadCount", 0)) == thread
-                        and int(item.get("iteration", 0)) == 1
-                        and item.get("success", False)
-                        and item.get("elapsedMillis") is not None
-                    )
-                ]
-                measured_samples = [
-                    float(item["elapsedMillis"])
-                    for item in runs
-                    if (
-                        item.get("mode") == mode
-                        and int(item.get("threadCount", 0)) == thread
-                        and int(item.get("iteration", 0)) > 1
-                        and item.get("success", False)
-                        and item.get("elapsedMillis") is not None
-                    )
-                ]
-
-            if not warmup_samples or not measured_samples:
-                deltas.append(math.nan)
-                continue
-
-            warmup_avg = summarize_metric(warmup_samples)
-            measured_avg = summarize_metric(measured_samples)
-            if warmup_avg <= 0:
-                deltas.append(math.nan)
-                continue
-
-            delta_percent = ((warmup_avg - measured_avg) / warmup_avg) * 100.0
-            deltas.append(delta_percent)
-
-        filtered = [(x, y) for x, y in zip(x_positions, deltas) if not math.isnan(y)]
-        if not filtered:
-            continue
-
-        has_data = True
-        xs = [item[0] for item in filtered]
-        ys = [item[1] for item in filtered]
-        color = JETBRAINS_COLORS[index % len(JETBRAINS_COLORS)]
-
-        ax.plot(xs, ys, marker="o", linewidth=2.0, color=color, label=mode)
-
-    if not has_data:
-        plt.close(fig)
-        return
-
-    ax.axhline(0.0, color="#888888", linewidth=1.0, linestyle="--")
-    ax.set_title(title)
-    ax.set_xlabel("Thread Count")
-    ax.set_ylabel("Elapsed Time Reduction After Warmup (%)")
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels([str(t) for t in threads])
-    ax.legend(title="Mode")
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi)
-    plt.close(fig)
-
 
 if __name__ == "__main__":
     main()

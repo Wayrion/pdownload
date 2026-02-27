@@ -128,7 +128,19 @@ This writes run-level and summary metrics to JSON (`schemaVersion`, target metad
 
 ## 5) Plot benchmark results (Task 5)
 
-Install Python deps and render plots:
+Render plots with `uv` (recommended):
+
+```bash
+uv run scripts/plot_benchmark.py --input build/benchmark-compare.json --output-dir build/benchmark-plots
+```
+
+Use high-contrast colors when needed:
+
+```bash
+uv run scripts/plot_benchmark.py --input build/benchmark-compare.json --output-dir build/benchmark-plots --palette high-contrast
+```
+
+Alternative (venv + pip) setup:
 
 ```bash
 python3 -m venv .venv
@@ -141,7 +153,15 @@ python scripts/plot_benchmark.py --input build/benchmark-compare.json --output-d
 Generated charts include:
 - `elapsed_by_threads.png`
 - `jit_warmup_before_after.png`
-- `jit_warmup_delta_by_threads.png`
+
+### Benchmark screenshots
+
+- [Elapsed by threads](screenshots/elapsed_by_threads.png)
+- [Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
+
+![Elapsed by threads](screenshots/elapsed_by_threads.png)
+
+![Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
 
 ## CLI flags that can improve performance
 
