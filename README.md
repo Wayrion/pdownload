@@ -28,3 +28,18 @@ curl -i --http2-prior-knowledge http://127.0.0.1:8080/sample.txt
 ```bash
 docker stop pdownload-httpd
 ```
+
+## Task 5: Plot benchmark results
+
+Generate benchmark JSON:
+
+```bash
+./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --output-json build/benchmark-results.json"
+```
+
+Install plotting dependency and render charts:
+
+```bash
+python3 -m pip install matplotlib
+python3 scripts/plot_benchmark.py --input build/benchmark-results.json --output-dir build/benchmark-plots
+```
