@@ -1,0 +1,4 @@
+This is a sample file for parallel range-based downloading tests.
+Each line is intentionally short and predictable.
+abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
+Kotlin downloader benchmark fixture.

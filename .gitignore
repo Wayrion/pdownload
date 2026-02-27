@@ -65,6 +65,7 @@ kotlin-ide/
 **/.junie/memory/
 .claude/local.md
 .claude/CLAUDE.md
+task.txt
 # Ignore Gradle project-specific cache directory
 .gradle
 
