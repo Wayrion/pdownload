@@ -26,7 +26,7 @@ java {
 layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("lib"))
 
 application {
-    mainClass = "org.example.DownloaderCliKt"
+    mainClass = "com.wayrion.pdownload.DownloaderCliKt"
 }
 
 tasks.named<Test>("test") {
@@ -38,6 +38,6 @@ tasks.register<JavaExec>("runBenchmark") {
     group = "application"
     description = "Runs parallel downloader benchmark matrix and writes JSON output"
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass = "org.example.BenchmarkCliKt"
+    mainClass = "com.wayrion.pdownload.BenchmarkCliKt"
     workingDir = rootProject.projectDir
 }

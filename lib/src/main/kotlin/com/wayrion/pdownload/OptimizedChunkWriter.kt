@@ -1,4 +1,4 @@
-package org.example
+package com.wayrion.pdownload
 
 import java.io.BufferedInputStream
 import java.net.http.HttpResponse

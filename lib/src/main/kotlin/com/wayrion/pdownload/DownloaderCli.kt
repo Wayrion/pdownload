@@ -1,4 +1,4 @@
-package org.example
+package com.wayrion.pdownload
 
 import java.nio.file.Path
 import java.time.Duration
