@@ -2,11 +2,30 @@
 
 This project implements a parallel chunk-based downloader using HTTP `Range` requests.
 It includes:
-- a local Apache Docker setup with HTTP/2 enabled,
+- a local Apache Docker setup configured for HTTP/2 (`h2`/`h2c`),
 - a downloader CLI (default `--threads 8`),
 - benchmark CLI for powers-of-two thread counts,
 - KoTest coverage for correctness and retries,
 - a Python plotting script with a JetBrains-inspired theme.
+
+## Code layout
+
+Core Kotlin sources are under `lib/src/main/kotlin/com/wayrion/pdownload`:
+
+- `Library.kt`: downloader core (`DownloadConfig`, metadata fetch, range splitting, thread/process download paths).
+- `NaiveChunkWriter.kt` / `OptimizedChunkWriter.kt`: two in-process chunk write strategies.
+- `ProcessChunkWorker.kt`: child JVM worker used by `processes` mode.
+- `ChunkHttp.kt`: shared chunk-range GET + retry helper logic.
+- `DownloaderCli.kt`: user-facing downloader CLI entrypoint.
+- `BenchmarkCli.kt`: benchmark CLI entrypoint.
+- `BenchmarkRunner.kt`: benchmark orchestration + option parsing.
+- `BenchmarkModels.kt`: benchmark report and row data models.
+- `BenchmarkSummary.kt`: benchmark summary/statistics calculations.
+- `BenchmarkJson.kt`: benchmark JSON serialization.
+- `CliArgs.kt`: shared CLI argument parsing and standardized CLI error helpers.
+
+Tests are under `lib/src/test/kotlin/com/wayrion/pdownload/LibraryTest.kt`.
+Plotting lives in `scripts/plot_benchmark.py`.
 
 ## 1) Local Apache HTTP server (Task 1)
 
@@ -81,7 +100,8 @@ Covered scenarios include:
 - 200 KB parallel chunk download,
 - non-even chunk boundaries,
 - retry once then succeed,
-- retry exhausted failure.
+- retry exhausted failure,
+- process mode correctness and process mode retry behavior.
 
 ## 4) Benchmark matrix + JSON output
 
@@ -97,7 +117,7 @@ Run required thread powers (`1,2,4,8,16,32,64`) across all modes:
 ./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --threads 1,2,4,8,16,32,64 --output-json build/benchmark-compare.json"
 ```
 
-By default, each mode/thread pair runs `5` warm-up iterations (not recorded in `runs`) before measured iterations.
+By default, each mode/thread pair runs `5` warm-up iterations (stored under `warmups`) before measured iterations (stored under `runs`).
 Override warm-up count when needed:
 
 ```bash
