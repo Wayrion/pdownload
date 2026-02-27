@@ -23,6 +23,8 @@ repositories {
 dependencies {
     // Use the Kotlin Test integration.
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
+    testImplementation("io.kotest:kotest-assertions-core:5.9.1")
 
     // Use the JUnit 5 integration.
     testImplementation(libs.junit.jupiter.engine)
