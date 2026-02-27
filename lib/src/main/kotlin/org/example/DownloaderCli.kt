@@ -23,6 +23,9 @@ fun main(args: Array<String>) {
         requestTimeout = Duration.ofMillis(options.requestTimeoutMs ?: 30_000L),
         maxRetriesPerChunk = options.maxRetries ?: 0,
         retryDelayMillis = options.retryDelayMs ?: 100L,
+        mode = options.mode ?: DownloadMode.NAIVE,
+        ioBufferBytes = options.ioBufferBytes ?: (16 * 1024),
+        expectedSha256 = options.expectedSha256,
     )
 
     val downloader = ParallelFileDownloader()
@@ -43,6 +46,9 @@ private fun printUsage() {
           --chunk-size-bytes <N>    Chunk size in bytes (default: 1048576)
           --max-retries <N>         Retries per chunk on failure (default: 0)
           --retry-delay-ms <N>      Delay between retries (default: 100)
+                    --mode <naive|optimized>  Download strategy (default: naive)
+                    --io-buffer-bytes <N>     Per-thread I/O buffer bytes (default: 16384)
+                    --expected-sha256 <HEX>   Optional expected SHA-256 for verification
           --connect-timeout-ms <N>  Client connection timeout (default: 10000)
           --request-timeout-ms <N>  Per-request timeout (default: 30000)
           --help                    Print this help
@@ -57,6 +63,9 @@ private data class CliOptions(
     val chunkSizeBytes: Long? = null,
     val maxRetries: Int? = null,
     val retryDelayMs: Long? = null,
+    val mode: DownloadMode? = null,
+    val ioBufferBytes: Int? = null,
+    val expectedSha256: String? = null,
     val connectTimeoutMs: Long? = null,
     val requestTimeoutMs: Long? = null,
     val showHelp: Boolean = false,
@@ -84,6 +93,9 @@ private data class CliOptions(
                     "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = requireValue(arg).toLong())
                     "--max-retries" -> options = options.copy(maxRetries = requireValue(arg).toInt())
                     "--retry-delay-ms" -> options = options.copy(retryDelayMs = requireValue(arg).toLong())
+                    "--mode" -> options = options.copy(mode = parseMode(requireValue(arg)))
+                    "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = requireValue(arg).toInt())
+                    "--expected-sha256" -> options = options.copy(expectedSha256 = requireValue(arg))
                     "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = requireValue(arg).toLong())
                     "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = requireValue(arg).toLong())
                     "--help", "-h" -> options = options.copy(showHelp = true)
@@ -93,6 +105,14 @@ private data class CliOptions(
             }
 
             return options
+        }
+
+        private fun parseMode(value: String): DownloadMode {
+            return when (value.lowercase()) {
+                "naive" -> DownloadMode.NAIVE
+                "optimized" -> DownloadMode.OPTIMIZED
+                else -> error("Invalid --mode value: $value")
+            }
         }
     }
 }

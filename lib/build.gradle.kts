@@ -53,3 +53,10 @@ tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("runBenchmark") {
+    group = "application"
+    description = "Runs parallel downloader benchmark matrix and writes JSON output"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "org.example.BenchmarkCliKt"
+}
