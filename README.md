@@ -97,6 +97,13 @@ Run required thread powers (`1,2,4,8,16,32,64`) across all modes:
 ./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --threads 1,2,4,8,16,32,64 --output-json build/benchmark-compare.json"
 ```
 
+By default, each mode/thread pair runs `5` warm-up iterations (not recorded in `runs`) before measured iterations.
+Override warm-up count when needed:
+
+```bash
+./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --threads 1,2,4,8,16,32,64 --warmup-iterations 8 --output-json build/benchmark-compare.json"
+```
+
 This writes run-level and summary metrics to JSON (`schemaVersion`, target metadata, host info, per-run throughput, and per-mode best thread count).
 
 ## 5) Plot benchmark results (Task 5)

@@ -30,6 +30,7 @@ fun benchmarkMain(args: Array<String>) {
 
     val threadCounts = options.threadCounts ?: listOf(1, 2, 4, 8, 16, 32, 64)
     val modes = resolveModes(options)
+    val warmupIterations = options.warmupIterations ?: 5
     val iterations = options.iterations ?: 5
     val chunkSizeBytes = options.chunkSizeBytes ?: (1L shl 20)
     val ioBufferBytes = options.ioBufferBytes ?: (16 * 1024)
@@ -51,6 +52,31 @@ fun benchmarkMain(args: Array<String>) {
 
     for (mode in modes) {
         for (threads in threadCounts) {
+            for (warmupIteration in 1..warmupIterations) {
+                val warmupOutput = workDir.resolve(
+                    "warmup-${mode.name.lowercase()}-$threads-$warmupIteration-${UUID.randomUUID()}.bin",
+                )
+                try {
+                    downloader.download(
+                        url = url,
+                        destination = warmupOutput,
+                        config = DownloadConfig(
+                            threadCount = threads,
+                            chunkSizeBytes = chunkSizeBytes,
+                            connectTimeout = Duration.ofMillis(connectTimeoutMs),
+                            requestTimeout = Duration.ofMillis(requestTimeoutMs),
+                            maxRetriesPerChunk = maxRetries,
+                            retryDelayMillis = retryDelayMs,
+                            mode = mode,
+                            ioBufferBytes = ioBufferBytes,
+                            expectedSha256 = expectedSha256,
+                        ),
+                    )
+                } finally {
+                    Files.deleteIfExists(warmupOutput)
+                }
+            }
+
             for (iteration in 1..iterations) {
                 val output = workDir.resolve("download-${mode.name.lowercase()}-$threads-$iteration-${UUID.randomUUID()}.bin")
                 var elapsedMillis: Long? = null
@@ -123,6 +149,7 @@ fun benchmarkMain(args: Array<String>) {
         benchmark = BenchmarkConfigSection(
             threadCounts = threadCounts,
             modes = modes.map { it.name.lowercase() },
+            warmupIterations = warmupIterations,
             iterations = iterations,
             chunkSizeBytes = chunkSizeBytes,
             ioBufferBytes = ioBufferBytes,
@@ -174,6 +201,7 @@ private fun printBenchmarkUsage() {
                 |  --mode <VALUE>             Single mode: naive|optimized|processes|both (default: both)
                 |  --threads <CSV>            Thread counts, e.g. 1,2,4,8,16,32,64
                 |  --modes <CSV>              Modes: naive,optimized,processes
+                |  --warmup-iterations <N>    Warm-up iterations per mode/thread (default: 5)
                 |  --iterations <N>           Iterations per mode/thread (default: 5)
                 |  --chunk-size-bytes <N>     Chunk size in bytes (default: 1048576)
                 |  --io-buffer-bytes <N>      I/O buffer bytes (default: 16384)
@@ -193,6 +221,7 @@ private data class BenchmarkOptions(
     val mode: String? = null,
     val threadCounts: List<Int>? = null,
     val modes: List<DownloadMode>? = null,
+    val warmupIterations: Int? = null,
     val iterations: Int? = null,
     val chunkSizeBytes: Long? = null,
     val ioBufferBytes: Int? = null,
@@ -223,6 +252,7 @@ private data class BenchmarkOptions(
                     "--mode" -> options = options.copy(mode = requireValue(arg).trim().lowercase())
                     "--threads" -> options = options.copy(threadCounts = parseThreads(requireValue(arg)))
                     "--modes" -> options = options.copy(modes = parseModes(requireValue(arg)))
+                    "--warmup-iterations" -> options = options.copy(warmupIterations = requireValue(arg).toInt())
                     "--iterations" -> options = options.copy(iterations = requireValue(arg).toInt())
                     "--chunk-size-bytes" -> options = options.copy(chunkSizeBytes = requireValue(arg).toLong())
                     "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = requireValue(arg).toInt())
@@ -288,6 +318,7 @@ data class HostMetadata(
 data class BenchmarkConfigSection(
     val threadCounts: List<Int>,
     val modes: List<String>,
+    val warmupIterations: Int,
     val iterations: Int,
     val chunkSizeBytes: Long,
     val ioBufferBytes: Int,
@@ -509,6 +540,7 @@ private fun BenchmarkReport.toJson(): String {
         sb.append('"').append(value.jsonEscape()).append('"')
     }
     sb.append("],")
+    sb.field("warmupIterations", benchmark.warmupIterations)
     sb.field("iterations", benchmark.iterations)
     sb.field("chunkSizeBytes", benchmark.chunkSizeBytes)
     sb.field("ioBufferBytes", benchmark.ioBufferBytes)
