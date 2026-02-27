@@ -45,6 +45,8 @@ java {
     }
 }
 
+layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("lib"))
+
 application {
     mainClass = "org.example.DownloaderCliKt"
 }
@@ -59,4 +61,5 @@ tasks.register<JavaExec>("runBenchmark") {
     description = "Runs parallel downloader benchmark matrix and writes JSON output"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "org.example.BenchmarkCliKt"
+    workingDir = rootProject.projectDir
 }

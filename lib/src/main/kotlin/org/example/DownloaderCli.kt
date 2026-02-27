@@ -46,7 +46,7 @@ private fun printUsage() {
           --chunk-size-bytes <N>    Chunk size in bytes (default: 1048576)
           --max-retries <N>         Retries per chunk on failure (default: 0)
           --retry-delay-ms <N>      Delay between retries (default: 100)
-                    --mode <naive|optimized>  Download strategy (default: naive)
+                      --mode <naive|optimized|processes>  Download strategy (default: naive)
                     --io-buffer-bytes <N>     Per-thread I/O buffer bytes (default: 16384)
                     --expected-sha256 <HEX>   Optional expected SHA-256 for verification
           --connect-timeout-ms <N>  Client connection timeout (default: 10000)
@@ -111,6 +111,7 @@ private data class CliOptions(
             return when (value.lowercase()) {
                 "naive" -> DownloadMode.NAIVE
                 "optimized" -> DownloadMode.OPTIMIZED
+                "processes" -> DownloadMode.PROCESSES
                 else -> error("Invalid --mode value: $value")
             }
         }

@@ -290,3 +290,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Sample files
+sample.txt

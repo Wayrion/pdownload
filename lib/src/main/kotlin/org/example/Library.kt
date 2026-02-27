@@ -13,6 +13,7 @@ import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.stream.Collectors
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.system.measureTimeMillis
@@ -20,6 +21,7 @@ import kotlin.system.measureTimeMillis
 enum class DownloadMode {
     NAIVE,
     OPTIMIZED,
+    PROCESSES,
 }
 
 data class DownloadConfig(
@@ -77,12 +79,27 @@ class ParallelFileDownloader(
         val client = clientFactory(config)
         val metadata = fetchMetadata(client, url, config)
         val chunkRanges = splitIntoRanges(metadata.contentLength, config.chunkSizeBytes)
-        val workerCount = max(1, minOf(config.threadCount, chunkRanges.size))
 
         val parent = destination.toAbsolutePath().parent
         if (parent != null) {
             Files.createDirectories(parent)
         }
+
+        return when (config.mode) {
+            DownloadMode.PROCESSES -> downloadWithProcesses(url, destination, config, metadata, chunkRanges)
+            DownloadMode.NAIVE, DownloadMode.OPTIMIZED -> downloadWithThreads(url, destination, config, metadata, chunkRanges, client)
+        }
+    }
+
+    private fun downloadWithThreads(
+        url: String,
+        destination: Path,
+        config: DownloadConfig,
+        metadata: FileMetadata,
+        chunkRanges: List<ChunkRange>,
+        client: HttpClient,
+    ): DownloadResult {
+        val workerCount = max(1, minOf(config.threadCount, chunkRanges.size))
 
         FileChannel.open(
             destination,
@@ -116,20 +133,150 @@ class ParallelFileDownloader(
                 )
             }
 
-            val actualSha = sha256(destination)
-            if (config.expectedSha256 != null && !actualSha.equals(config.expectedSha256, ignoreCase = true)) {
+            verifyChecksumIfConfigured(destination, config)
+            return toResult(url, destination, downloadedSize, chunkRanges.size, elapsedMillis)
+        }
+    }
+
+    private fun downloadWithProcesses(
+        url: String,
+        destination: Path,
+        config: DownloadConfig,
+        metadata: FileMetadata,
+        chunkRanges: List<ChunkRange>,
+    ): DownloadResult {
+        val workerCount = max(1, minOf(config.threadCount, chunkRanges.size))
+        val tempDir = Files.createTempDirectory("pdownload-proc-")
+
+        try {
+            val elapsedMillis = measureTimeMillis {
+                val executor = Executors.newFixedThreadPool(workerCount)
+                try {
+                    val tasks = chunkRanges.map { range ->
+                        Callable {
+                            runChunkWorkerProcess(url, range, tempDir, config)
+                        }
+                    }
+                    val futures = executor.invokeAll(tasks)
+                    futures.forEach { it.get() }
+                } finally {
+                    executor.shutdown()
+                    executor.awaitTermination(30, TimeUnit.SECONDS)
+                }
+
+                mergeChunks(tempDir, chunkRanges, destination)
+            }
+
+            val downloadedSize = Files.size(destination)
+            if (downloadedSize != metadata.contentLength) {
                 throw IllegalStateException(
-                    "SHA-256 mismatch. expected=${config.expectedSha256} actual=$actualSha",
+                    "Downloaded file size mismatch. expected=${metadata.contentLength} actual=$downloadedSize",
                 )
             }
 
-            return DownloadResult(
-                url = url,
-                destination = destination,
-                bytesDownloaded = downloadedSize,
-                chunksDownloaded = chunkRanges.size,
-                elapsedMillis = elapsedMillis,
+            verifyChecksumIfConfigured(destination, config)
+            return toResult(url, destination, downloadedSize, chunkRanges.size, elapsedMillis)
+        } finally {
+            deleteDirectoryRecursively(tempDir)
+        }
+    }
+
+    private fun runChunkWorkerProcess(
+        url: String,
+        chunk: ChunkRange,
+        tempDir: Path,
+        config: DownloadConfig,
+    ) {
+        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+        val classPath = System.getProperty("java.class.path")
+        val output = tempDir.resolve("chunk-${chunk.index}.part")
+
+        val command = listOf(
+            javaExecutable,
+            "-cp",
+            classPath,
+            "org.example.ProcessChunkWorkerKt",
+            "--url", url,
+            "--start", chunk.startInclusive.toString(),
+            "--end", chunk.endInclusive.toString(),
+            "--output", output.toString(),
+            "--connect-timeout-ms", config.connectTimeout.toMillis().toString(),
+            "--request-timeout-ms", config.requestTimeout.toMillis().toString(),
+            "--max-retries", config.maxRetriesPerChunk.toString(),
+            "--retry-delay-ms", config.retryDelayMillis.toString(),
+        )
+
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+
+        val processOutput = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw IllegalStateException(
+                "Chunk worker failed for chunk=${chunk.index} exit=$exitCode output=$processOutput",
             )
+        }
+
+        if (!Files.exists(output)) {
+            throw IllegalStateException("Chunk worker did not create output for chunk=${chunk.index}")
+        }
+
+        val expectedSize = chunk.endInclusive - chunk.startInclusive + 1L
+        val actualSize = Files.size(output)
+        if (actualSize != expectedSize) {
+            throw IllegalStateException(
+                "Chunk file size mismatch for chunk=${chunk.index}. expected=$expectedSize actual=$actualSize",
+            )
+        }
+    }
+
+    private fun mergeChunks(tempDir: Path, chunkRanges: List<ChunkRange>, destination: Path) {
+        Files.newOutputStream(
+            destination,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE,
+        ).use { output ->
+            chunkRanges.sortedBy { it.index }.forEach { chunk ->
+                val partPath = tempDir.resolve("chunk-${chunk.index}.part")
+                Files.newInputStream(partPath).use { input ->
+                    input.copyTo(output)
+                }
+            }
+        }
+    }
+
+    private fun verifyChecksumIfConfigured(destination: Path, config: DownloadConfig) {
+        val expected = config.expectedSha256 ?: return
+        val actualSha = sha256(destination)
+        if (!actualSha.equals(expected, ignoreCase = true)) {
+            throw IllegalStateException("SHA-256 mismatch. expected=$expected actual=$actualSha")
+        }
+    }
+
+    private fun toResult(
+        url: String,
+        destination: Path,
+        downloadedSize: Long,
+        chunksDownloaded: Int,
+        elapsedMillis: Long,
+    ): DownloadResult {
+        return DownloadResult(
+            url = url,
+            destination = destination,
+            bytesDownloaded = downloadedSize,
+            chunksDownloaded = chunksDownloaded,
+            elapsedMillis = elapsedMillis,
+        )
+    }
+
+    private fun deleteDirectoryRecursively(directory: Path) {
+        if (!Files.exists(directory)) return
+        Files.walk(directory).use { stream ->
+            stream.sorted(Comparator.reverseOrder()).collect(Collectors.toList()).forEach { path ->
+                Files.deleteIfExists(path)
+            }
         }
     }
 
@@ -196,6 +343,7 @@ class ParallelFileDownloader(
                 val writePosition = when (config.mode) {
                     DownloadMode.NAIVE -> naiveChunkWriter.write(response, chunk, fileChannel, config)
                     DownloadMode.OPTIMIZED -> optimizedChunkWriter.write(response, chunk, fileChannel, config)
+                    DownloadMode.PROCESSES -> error("Process mode does not use in-process chunk writers")
                 }
 
                 val expectedBytes = chunk.endInclusive - chunk.startInclusive + 1L

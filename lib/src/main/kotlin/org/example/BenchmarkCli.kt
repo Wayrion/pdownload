@@ -22,15 +22,15 @@ fun benchmarkMain(args: Array<String>) {
     }
 
     val url = options.url ?: error("Missing required --url")
-    val outputJson = Path.of(options.outputJson ?: "benchmark-results.json")
+    val outputJson = Path.of(options.outputJson ?: "build/benchmark-results.json")
     val workDir = Path.of(options.workDir ?: "build/benchmark-downloads")
 
     Files.createDirectories(workDir)
     outputJson.toAbsolutePath().parent?.let { Files.createDirectories(it) }
 
     val threadCounts = options.threadCounts ?: listOf(1, 2, 4, 8, 16, 32, 64)
-    val modes = options.modes ?: listOf(DownloadMode.NAIVE, DownloadMode.OPTIMIZED)
-    val iterations = options.iterations ?: 3
+    val modes = resolveModes(options)
+    val iterations = options.iterations ?: 5
     val chunkSizeBytes = options.chunkSizeBytes ?: (1L shl 20)
     val ioBufferBytes = options.ioBufferBytes ?: (16 * 1024)
     val connectTimeoutMs = options.connectTimeoutMs ?: 10_000L
@@ -132,11 +132,34 @@ fun benchmarkMain(args: Array<String>) {
             requestTimeoutMs = requestTimeoutMs,
         ),
         runs = runRows,
+        summary = buildSummary(runRows, modes.map { it.name.lowercase() }, threadCounts),
     )
 
     Files.writeString(outputJson, report.toJson())
     println("Benchmark complete: ${report.runs.size} runs")
+    report.summary.perMode.forEach { modeSummary ->
+        println(
+            "mode=${modeSummary.mode} bestThreads=${modeSummary.bestThreadCount} " +
+                "avgThroughputMiBps=${modeSummary.bestAverageThroughputMiBps}",
+        )
+    }
+    report.summary.optimizedVsNaive?.let { diff ->
+        println("optimized/naive speedup at each mode optimum: ${diff.speedupAtModeOptimum}")
+    }
     println("Output JSON: ${outputJson.toAbsolutePath()}")
+}
+
+private fun resolveModes(options: BenchmarkOptions): List<DownloadMode> {
+    if (options.mode != null) {
+        return when (options.mode) {
+            "naive" -> listOf(DownloadMode.NAIVE)
+            "optimized" -> listOf(DownloadMode.OPTIMIZED)
+            "processes" -> listOf(DownloadMode.PROCESSES)
+            "both" -> listOf(DownloadMode.NAIVE, DownloadMode.OPTIMIZED, DownloadMode.PROCESSES)
+            else -> error("Invalid --mode value: ${options.mode}")
+        }
+    }
+    return options.modes ?: listOf(DownloadMode.NAIVE, DownloadMode.OPTIMIZED, DownloadMode.PROCESSES)
 }
 
 private fun printBenchmarkUsage() {
@@ -146,11 +169,12 @@ private fun printBenchmarkUsage() {
           benchmark --url <URL> [options]
 
         Options:
-          --output-json <PATH>       JSON output file (default: benchmark-results.json)
+          --output-json <PATH>       JSON output file (default: build/benchmark-results.json)
           --work-dir <PATH>          Temporary output directory (default: build/benchmark-downloads)
+                      --mode <VALUE>             Single mode: naive|optimized|processes|both (default: both)
           --threads <CSV>            Thread counts, e.g. 1,2,4,8,16,32,64
-          --modes <CSV>              Modes: naive,optimized (default: naive,optimized)
-          --iterations <N>           Iterations per mode/thread (default: 3)
+                      --modes <CSV>              Modes: naive,optimized,processes
+          --iterations <N>           Iterations per mode/thread (default: 5)
           --chunk-size-bytes <N>     Chunk size in bytes (default: 1048576)
           --io-buffer-bytes <N>      I/O buffer bytes (default: 16384)
           --max-retries <N>          Retries per chunk (default: 1)
@@ -166,6 +190,7 @@ private data class BenchmarkOptions(
     val url: String? = null,
     val outputJson: String? = null,
     val workDir: String? = null,
+    val mode: String? = null,
     val threadCounts: List<Int>? = null,
     val modes: List<DownloadMode>? = null,
     val iterations: Int? = null,
@@ -195,6 +220,7 @@ private data class BenchmarkOptions(
                     "--url" -> options = options.copy(url = requireValue(arg))
                     "--output-json" -> options = options.copy(outputJson = requireValue(arg))
                     "--work-dir" -> options = options.copy(workDir = requireValue(arg))
+                    "--mode" -> options = options.copy(mode = requireValue(arg).trim().lowercase())
                     "--threads" -> options = options.copy(threadCounts = parseThreads(requireValue(arg)))
                     "--modes" -> options = options.copy(modes = parseModes(requireValue(arg)))
                     "--iterations" -> options = options.copy(iterations = requireValue(arg).toInt())
@@ -221,6 +247,7 @@ private data class BenchmarkOptions(
                 when (token.trim().lowercase()) {
                     "naive" -> DownloadMode.NAIVE
                     "optimized" -> DownloadMode.OPTIMIZED
+                    "processes" -> DownloadMode.PROCESSES
                     else -> error("Invalid mode: $token")
                 }
             }
@@ -292,7 +319,88 @@ data class BenchmarkReport(
     val host: HostMetadata,
     val benchmark: BenchmarkConfigSection,
     val runs: List<BenchmarkRunRow>,
+    val summary: BenchmarkSummary,
 )
+
+data class BenchmarkThreadSummary(
+    val threadCount: Int,
+    val averageThroughputMiBps: Double,
+    val averageElapsedMillis: Double,
+    val successRate: Double,
+)
+
+data class BenchmarkModeSummary(
+    val mode: String,
+    val threadSummaries: List<BenchmarkThreadSummary>,
+    val bestThreadCount: Int,
+    val bestAverageThroughputMiBps: Double,
+)
+
+data class OptimizedVsNaiveSummary(
+    val speedupAtModeOptimum: Double,
+)
+
+data class BenchmarkSummary(
+    val perMode: List<BenchmarkModeSummary>,
+    val optimizedVsNaive: OptimizedVsNaiveSummary?,
+)
+
+private fun buildSummary(
+    rows: List<BenchmarkRunRow>,
+    modes: List<String>,
+    threadCounts: List<Int>,
+): BenchmarkSummary {
+    val modeSummaries = modes.mapNotNull { mode ->
+        val threadSummaries = threadCounts.mapNotNull { threadCount ->
+            val samples = rows.filter { it.mode == mode && it.threadCount == threadCount }
+            if (samples.isEmpty()) return@mapNotNull null
+
+            val successful = samples.filter { it.success && it.throughputMiBps != null && it.elapsedMillis != null }
+            if (successful.isEmpty()) {
+                return@mapNotNull BenchmarkThreadSummary(
+                    threadCount = threadCount,
+                    averageThroughputMiBps = 0.0,
+                    averageElapsedMillis = 0.0,
+                    successRate = 0.0,
+                )
+            }
+
+            val avgThroughput = successful.mapNotNull { it.throughputMiBps }.average()
+            val avgElapsed = successful.mapNotNull { it.elapsedMillis }.average()
+            val successRate = successful.size.toDouble() / samples.size.toDouble()
+
+            BenchmarkThreadSummary(
+                threadCount = threadCount,
+                averageThroughputMiBps = round3(avgThroughput),
+                averageElapsedMillis = round3(avgElapsed),
+                successRate = round3(successRate),
+            )
+        }
+
+        if (threadSummaries.isEmpty()) return@mapNotNull null
+        val best = threadSummaries.maxByOrNull { it.averageThroughputMiBps }
+            ?: return@mapNotNull null
+
+        BenchmarkModeSummary(
+            mode = mode,
+            threadSummaries = threadSummaries,
+            bestThreadCount = best.threadCount,
+            bestAverageThroughputMiBps = best.averageThroughputMiBps,
+        )
+    }
+
+    val naiveBest = modeSummaries.firstOrNull { it.mode == "naive" }?.bestAverageThroughputMiBps
+    val optimizedBest = modeSummaries.firstOrNull { it.mode == "optimized" }?.bestAverageThroughputMiBps
+    val diff = if (naiveBest != null && optimizedBest != null && naiveBest > 0.0) {
+        OptimizedVsNaiveSummary(speedupAtModeOptimum = round3(optimizedBest / naiveBest))
+    } else {
+        null
+    }
+
+    return BenchmarkSummary(perMode = modeSummaries, optimizedVsNaive = diff)
+}
+
+private fun round3(value: Double): Double = round(value * 1000.0) / 1000.0
 
 private fun fetchSha256OverHttp(client: HttpClient, url: String, timeout: Duration): String {
     val request = HttpRequest.newBuilder(URI.create(url))
@@ -428,7 +536,39 @@ private fun BenchmarkReport.toJson(): String {
         sb.nullableField("error", run.error, comma = false)
         sb.append('}')
     }
-    sb.append(']')
+    sb.append("],")
+
+    sb.append("\"summary\":{")
+    sb.append("\"perMode\":[")
+    summary.perMode.forEachIndexed { index, modeSummary ->
+        if (index > 0) sb.append(',')
+        sb.append('{')
+        sb.field("mode", modeSummary.mode)
+        sb.field("bestThreadCount", modeSummary.bestThreadCount)
+        sb.field("bestAverageThroughputMiBps", modeSummary.bestAverageThroughputMiBps)
+        sb.append("\"threadSummaries\":[")
+        modeSummary.threadSummaries.forEachIndexed { tIndex, threadSummary ->
+            if (tIndex > 0) sb.append(',')
+            sb.append('{')
+            sb.field("threadCount", threadSummary.threadCount)
+            sb.field("averageThroughputMiBps", threadSummary.averageThroughputMiBps)
+            sb.field("averageElapsedMillis", threadSummary.averageElapsedMillis)
+            sb.field("successRate", threadSummary.successRate, comma = false)
+            sb.append('}')
+        }
+        sb.append(']')
+        sb.append('}')
+    }
+    sb.append("],")
+    sb.append("\"optimizedVsNaive\":")
+    if (summary.optimizedVsNaive == null) {
+        sb.append("null")
+    } else {
+        sb.append('{')
+        sb.field("speedupAtModeOptimum", summary.optimizedVsNaive.speedupAtModeOptimum, comma = false)
+        sb.append('}')
+    }
+    sb.append('}')
 
     sb.append('}')
     return sb.toString()
