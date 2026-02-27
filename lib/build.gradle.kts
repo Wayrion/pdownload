@@ -11,6 +11,8 @@ plugins {
 
     // Apply the java-library plugin for API and implementation separation.
     `java-library`
+
+    application
 }
 
 repositories {
@@ -37,8 +39,12 @@ dependencies {
 // Apply a specific Java toolchain to ease working on different environments.
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(24)
     }
+}
+
+application {
+    mainClass = "org.example.DownloaderCliKt"
 }
 
 tasks.named<Test>("test") {
