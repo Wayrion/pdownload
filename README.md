@@ -1,57 +1,122 @@
-# Parallel Downloader Playground
+# Parallel Range Downloader (Kotlin)
 
-## Task 1: Local HTTP/2 Apache file server
+This project implements a parallel chunk-based downloader using HTTP `Range` requests.
+It includes:
+- a local Apache Docker setup with HTTP/2 enabled,
+- a downloader CLI (default `--threads 8`),
+- benchmark CLI for powers-of-two thread counts,
+- KoTest coverage for correctness and retries,
+- a Python plotting script with a JetBrains-inspired theme.
 
-### Build image
+## 1) Local Apache HTTP server (Task 1)
+
+Build image:
 
 ```bash
 docker build -t pdownload-apache-h2 docker/apache
 ```
 
-### Run server
+Run with bundled sample file:
 
 ```bash
-docker run -d --rm --name pdownload-httpd -p 8080:80 pdownload-apache-h2
+docker run --rm -d --name pdownload-httpd -p 8080:80 pdownload-apache-h2
 ```
 
-### Test from host
+Run against your own host directory (as requested in task text):
 
 ```bash
-curl -i http://127.0.0.1:8080/sample.txt
+docker run --rm -d --name pdownload-httpd -p 8080:80 \
+	-v /path/to/your/local/directory:/usr/local/apache2/htdocs:ro \
+	pdownload-apache-h2
+```
+
+Verify host accessibility + required headers:
+
+```bash
+curl -I http://127.0.0.1:8080/sample.txt
 curl -i -H "Range: bytes=0-31" http://127.0.0.1:8080/sample.txt
-curl -i --http2-prior-knowledge http://127.0.0.1:8080/sample.txt
+curl -I --http2-prior-knowledge http://127.0.0.1:8080/sample.txt
 ```
 
-### Stop server
+Stop server:
 
 ```bash
 docker stop pdownload-httpd
 ```
 
-## Task 5: Plot benchmark results
+## 2) Downloader CLI (Task 2 + Task 4)
 
-Generate benchmark JSON:
-
-```bash
-./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode naive --output-json build/benchmark-naive.json --threads 1,2,4,8,16,32,64"
-./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode optimized --output-json build/benchmark-optimized.json --threads 1,2,4,8,16,32,64"
-./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode processes --output-json build/benchmark-processes.json --threads 1,2,4,8,16,32,64"
-./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --output-json build/benchmark-compare.json --threads 1,2,4,8,16,32,64"
-```
-
-Install plotting dependency and render charts:
+Run help:
 
 ```bash
-python3 -m pip install uv
-uv init
-# Acitivate the environment with source .venv/bin/activate
-uv run scripts/plot_benchmark.py --input build/benchmark-compare.json --output-dir build/benchmark-plots
+./gradlew :lib:run --args="--help"
 ```
 
-## Java 25 benchmark run
-
-Use Java 25 in your shell, then run:
+Download file with defaults (`8` threads, `naive` mode):
 
 ```bash
-./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --output-json build/benchmark-zulu25.json --threads 1,2,4,8,16,32,64"
+./gradlew :lib:run --args="--url http://127.0.0.1:8080/sample.txt --output build/download.bin"
 ```
+
+Run optimized mode:
+
+```bash
+./gradlew :lib:run --args="--url http://127.0.0.1:8080/sample.txt --output build/download-opt.bin --mode optimized --threads 16"
+```
+
+`--mode` values:
+- `naive`: buffered read/write chunk loop,
+- `optimized`: `FileChannel.transferFrom` path,
+- `processes`: per-chunk child JVM worker and merge.
+
+## 3) Tests (Task 3)
+
+Run unit tests:
+
+```bash
+./gradlew :lib:test
+```
+
+Covered scenarios include:
+- 200 KB parallel chunk download,
+- non-even chunk boundaries,
+- retry once then succeed,
+- retry exhausted failure.
+
+## 4) Benchmark matrix + JSON output
+
+Run benchmark help:
+
+```bash
+./gradlew :lib:runBenchmark --args="--help"
+```
+
+Run required thread powers (`1,2,4,8,16,32,64`) across all modes:
+
+```bash
+./gradlew :lib:runBenchmark --args="--url http://127.0.0.1:8080/sample.txt --mode both --threads 1,2,4,8,16,32,64 --output-json build/benchmark-compare.json"
+```
+
+This writes run-level and summary metrics to JSON (`schemaVersion`, target metadata, host info, per-run throughput, and per-mode best thread count).
+
+## 5) Plot benchmark results (Task 5)
+
+Install Python deps and render plots:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install matplotlib
+python scripts/plot_benchmark.py --input build/benchmark-compare.json --output-dir build/benchmark-plots
+```
+
+## CLI flags that can improve performance
+
+Useful tuning flags for experiments:
+- `--threads`: increase parallelism until network/disk saturates.
+- `--chunk-size-bytes`: reduce request overhead with larger chunks; too large can underutilize threads.
+- `--io-buffer-bytes`: increase per-thread buffering to reduce syscall pressure.
+- `--mode optimized`: usually lower copy overhead versus naive mode.
+- `--max-retries` + `--retry-delay-ms`: improve stability on flaky links without over-retrying.
+- `--connect-timeout-ms` and `--request-timeout-ms`: avoid hangs and improve benchmark consistency.

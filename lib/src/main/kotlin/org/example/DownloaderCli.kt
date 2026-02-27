@@ -38,21 +38,21 @@ fun main(args: Array<String>) {
 private fun printUsage() {
     println(
         """
-        Usage:
-          downloader --url <URL> --output <PATH> [options]
-
-        Options:
-          --threads <N>             Worker thread count (default: 8)
-          --chunk-size-bytes <N>    Chunk size in bytes (default: 1048576)
-          --max-retries <N>         Retries per chunk on failure (default: 0)
-          --retry-delay-ms <N>      Delay between retries (default: 100)
-                      --mode <naive|optimized|processes>  Download strategy (default: naive)
-                    --io-buffer-bytes <N>     Per-thread I/O buffer bytes (default: 16384)
-                    --expected-sha256 <HEX>   Optional expected SHA-256 for verification
-          --connect-timeout-ms <N>  Client connection timeout (default: 10000)
-          --request-timeout-ms <N>  Per-request timeout (default: 30000)
-          --help                    Print this help
-        """.trimIndent(),
+                |Usage:
+                |  downloader --url <URL> --output <PATH> [options]
+                |
+                |Options:
+                |  --threads <N>             Worker thread count (default: 8)
+                |  --chunk-size-bytes <N>    Chunk size in bytes (default: 1048576)
+                |  --max-retries <N>         Retries per chunk on failure (default: 0)
+                |  --retry-delay-ms <N>      Delay between retries (default: 100)
+                |  --mode <naive|optimized|processes>  Download strategy (default: naive)
+                |  --io-buffer-bytes <N>     Per-thread I/O buffer bytes (default: 16384)
+                |  --expected-sha256 <HEX>   Optional expected SHA-256 for verification
+                |  --connect-timeout-ms <N>  Client connection timeout (default: 10000)
+                |  --request-timeout-ms <N>  Per-request timeout (default: 30000)
+                |  --help                    Print this help
+                """.trimMargin(),
     )
 }
 

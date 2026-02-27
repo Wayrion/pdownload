@@ -165,24 +165,24 @@ private fun resolveModes(options: BenchmarkOptions): List<DownloadMode> {
 private fun printBenchmarkUsage() {
     println(
         """
-        Usage:
-          benchmark --url <URL> [options]
-
-        Options:
-          --output-json <PATH>       JSON output file (default: build/benchmark-results.json)
-          --work-dir <PATH>          Temporary output directory (default: build/benchmark-downloads)
-                      --mode <VALUE>             Single mode: naive|optimized|processes|both (default: both)
-          --threads <CSV>            Thread counts, e.g. 1,2,4,8,16,32,64
-                      --modes <CSV>              Modes: naive,optimized,processes
-          --iterations <N>           Iterations per mode/thread (default: 5)
-          --chunk-size-bytes <N>     Chunk size in bytes (default: 1048576)
-          --io-buffer-bytes <N>      I/O buffer bytes (default: 16384)
-          --max-retries <N>          Retries per chunk (default: 1)
-          --retry-delay-ms <N>       Delay between retries (default: 50)
-          --connect-timeout-ms <N>   Client connect timeout (default: 10000)
-          --request-timeout-ms <N>   Per-request timeout (default: 30000)
-          --help                     Print this help
-        """.trimIndent(),
+                |Usage:
+                |  benchmark --url <URL> [options]
+                |
+                |Options:
+                |  --output-json <PATH>       JSON output file (default: build/benchmark-results.json)
+                |  --work-dir <PATH>          Temporary output directory (default: build/benchmark-downloads)
+                |  --mode <VALUE>             Single mode: naive|optimized|processes|both (default: both)
+                |  --threads <CSV>            Thread counts, e.g. 1,2,4,8,16,32,64
+                |  --modes <CSV>              Modes: naive,optimized,processes
+                |  --iterations <N>           Iterations per mode/thread (default: 5)
+                |  --chunk-size-bytes <N>     Chunk size in bytes (default: 1048576)
+                |  --io-buffer-bytes <N>      I/O buffer bytes (default: 16384)
+                |  --max-retries <N>          Retries per chunk (default: 1)
+                |  --retry-delay-ms <N>       Delay between retries (default: 50)
+                |  --connect-timeout-ms <N>   Client connect timeout (default: 10000)
+                |  --request-timeout-ms <N>   Per-request timeout (default: 30000)
+                |  --help                     Print this help
+                """.trimMargin(),
     )
 }
 
