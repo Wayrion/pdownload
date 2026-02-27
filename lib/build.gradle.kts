@@ -31,6 +31,7 @@ application {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    systemProperty("kotest.framework.classpath.scanning.autoscan.disable", "true")
 }
 
 tasks.register<JavaExec>("runBenchmark") {
