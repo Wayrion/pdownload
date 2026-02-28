@@ -187,6 +187,11 @@ Generated charts include:
 
 - [Elapsed by threads](screenshots/elapsed_by_threads.png)
 - [Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
+- [Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
+
+Note: It was expected that thread-based parallelism would outperform process-based parallelism due to lower coordination overhead and no process-level isolation costs. This scenario was benchmarked explicitly, and the hypothesis was confirmed, as shown in the graph below.
+
+![Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
 
 ![Elapsed by threads](screenshots/elapsed_by_threads.png)
 
