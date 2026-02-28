@@ -219,9 +219,12 @@ Possible future experiments:
 
 Behavior notes across JVMs on a high level:
 - **HotSpot-based JDKs** (Temurin, Zulu, etc.) share core VM architecture, but may differ in packaging defaults, patch cadence, and collector availability by version.
+- **JetBrains Runtime (JBR)** can be a useful evaluation target for Kotlin-centric toolchains/workloads; while not guaranteed to be faster for this CLI benchmark, it may provide practical wins in some environments and is worth measuring with the same benchmark matrix.
 - **G1** is a good general-purpose default; it balances throughput and pause time but can still show pauses under allocation pressure.
 - **Low-pause collectors** like ZGC/Shenandoah are designed for shorter pauses, often at some throughput or footprint trade-off depending on workload.
 - **Azul Prime** is designed around low-latency runtime techniques and is worth evaluating when pause-time consistency is a hard requirement.
+
+Practical note: even if you stay on a standard HotSpot distribution, enterprise/runtime tuning guidance from vendors like Azul can still be used to derive actionable settings (heap sizing, pause targets, collector selection, warmup strategy) for this downloader benchmark.
 
 Reference context for this direction:
 - Kotlin + Azul collaboration note: https://blog.jetbrains.com/kotlin/2025/05/kotlin-and-azul-collaboration-for-enhanced-runtime-performance/
