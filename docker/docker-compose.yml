@@ -1,0 +1,10 @@
+
+services:
+  pdownload-httpd:
+    build:
+      context: .
+    image: pdownload-apache-h2
+    container_name: pdownload-httpd
+    ports:
+      - "8080:80"
+    restart: unless-stopped
