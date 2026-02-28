@@ -30,7 +30,7 @@ Core Kotlin sources are under `lib/src/main/kotlin/com/wayrion/pdownload`:
 Tests are under [LibraryTest.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/test/kotlin/com/wayrion/pdownload/LibraryTest.kt).
 Plotting lives in [scripts/plot_benchmark.py](https://github.com/Wayrion/pdownload/blob/main/scripts/plot_benchmark.py).
 
-## 1) Local Apache HTTP server (Task 1)
+## 1) Local Apache HTTP server
 
 Build image:
 
@@ -85,7 +85,7 @@ docker compose -f docker/docker-compose.yml down --remove-orphans && docker comp
 
 The compose spec is in [docker/docker-compose.yml](docker/docker-compose.yml).
 
-## 2) Downloader CLI (Task 2 + Task 4)
+## 2) Downloader CLI
 
 Run help:
 
@@ -116,7 +116,7 @@ Memory output toggle:
 - `--output-from-memory true` (default): assemble chunks in memory, then write final file once.
 - `--output-from-memory false`: stream chunk writes directly to destination file.
 
-## 3) Tests (Task 3)
+## 3) Tests
 
 Run unit tests:
 
@@ -188,7 +188,14 @@ Override warm-up count when needed:
 
 This writes run-level and summary metrics to JSON (`schemaVersion`, target metadata, host info, per-run elapsed time, and per-mode best thread count).
 
-## 5) Plot benchmark results (Task 5)
+## Key observations
+
+- Small files (example: `64KB`): extra threads can hurt performance. The `elapsed_by_threads` plot for small samples shows that per-request and scheduling overhead dominate short transfers, so increasing thread counts beyond a small number often reduces throughput.
+- Large files (example: `1024MB`): long-running transfers scale well with threads. For big samples the `elapsed_by_threads` plot demonstrates clear throughput improvements as thread counts increase, and longer runs reduce the relative impact of external noise (JIT/GC, OS scheduling).
+
+For full per-run JSON and plots, see the `benchmarks/` folder: [benchmarks](benchmarks/).
+
+## 5) Plot benchmark results
 
 Render plots with `uv` (recommended):
 
@@ -222,6 +229,17 @@ Generated charts include:
 - [Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
 - [Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
 
+Selected per-size plots (small / medium / large file size):
+
+- [Elapsed - 64KB](benchmarks/images/elapsed_benchmark-sample-64KB.png)
+- [Elapsed - 256KB](benchmarks/images/elapsed_benchmark-sample-256KB.png)
+- [Elapsed - 1024MB](benchmarks/images/elapsed_benchmark-sample-1024MB.png)
+
+Selected JIT/warmup comparisons:
+
+- [JIT - 64KB](benchmarks/images/JIT_benchmark-sample-64KB.png)
+- [JIT - 1024MB](benchmarks/images/JIT_benchmark-sample-1024MB.png)
+
 Note: It was expected that thread-based parallelism would outperform process-based parallelism due to lower coordination overhead and no process-level isolation costs. This scenario was benchmarked explicitly, and the hypothesis was confirmed, as shown in the graph below.
 
 ![Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
@@ -236,6 +254,26 @@ With 3 JIT warmup iterations on 1MB file.
 
 Run with 3 JIT warmup iterations on a 1MB file with the naive implementation.
 
+
+#### Hand picked benchmarks 
+
+Shown below are hand picked benchmarks show casing the phenomenon noted above. Strong scaling is shown as the file size grows.
+
+![Elapsed - 64KB](benchmarks/images/elapsed_benchmark-sample-64KB.png)
+![Elapsed - 256KB](benchmarks/images/elapsed_benchmark-sample-256KB.png)
+![Elapsed - 1024MB](benchmarks/images/elapsed_benchmark-sample-1024MB.png)
+![JIT - 64KB](benchmarks/images/JIT_benchmark-sample-64KB.png)
+![JIT - 1024MB](benchmarks/images/JIT_benchmark-sample-1024MB.png)
+
+*64KB elapsed:* small transfers show high relative overheads; extra threads often reduce throughput and warmup produces a larger percentage improvement compared with measured runs.
+
+*256KB elapsed:* medium transfers are mixed — some thread counts help, others add overhead; behavior depends on chunk sizing and IO overhead.
+
+*1024MB elapsed:* large transfers scale well; additional threads improve throughput and warmup has a smaller percentage impact on long-running transfers.
+
+*JIT 64KB:* warmup yields a visibly higher percent reduction in elapsed time for very small files (before vs after warmup).
+
+*JIT 1024MB:* for large files, the JIT/warmup effect is much smaller percentage-wise; measured runs dominate overall elapsed time.
 
 
 ## Benchmark limitations
