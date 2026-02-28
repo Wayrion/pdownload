@@ -14,17 +14,18 @@ It includes:
 
 Core Kotlin sources are under `lib/src/main/kotlin/com/wayrion/pdownload`:
 
-- `Library.kt`: downloader core (`DownloadConfig`, metadata fetch, range splitting, thread/process download paths).
-- `NaiveChunkWriter.kt` / `OptimizedChunkWriter.kt`: two in-process chunk write strategies.
-- `ProcessChunkWorker.kt`: child JVM worker used by `processes` mode.
-- `ChunkHttp.kt`: shared chunk-range GET + retry helper logic.
-- `DownloaderCli.kt`: user-facing downloader CLI entrypoint.
-- `BenchmarkCli.kt`: benchmark CLI entrypoint.
-- `BenchmarkRunner.kt`: benchmark orchestration + option parsing.
-- `BenchmarkModels.kt`: benchmark report and row data models.
-- `BenchmarkSummary.kt`: benchmark summary/statistics calculations.
-- `BenchmarkJson.kt`: benchmark JSON serialization.
-- `CliArgs.kt`: shared CLI argument parsing and standardized CLI error helpers.
+ - [Library.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/Library.kt): downloader core (`DownloadConfig`, metadata fetch, range splitting, thread/process download paths).
+ 
+- [NaiveChunkWriter.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/NaiveChunkWriter.kt) / [OptimizedChunkWriter.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/OptimizedChunkWriter.kt): two in-process chunk write strategies.
+- [ProcessChunkWorker.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/ProcessChunkWorker.kt): child JVM worker used by `processes` mode.
+- [ChunkHttp.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/ChunkHttp.kt): shared chunk-range GET + retry helper logic.
+- [DownloaderCli.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/DownloaderCli.kt): user-facing downloader CLI entrypoint.
+- [BenchmarkCli.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/BenchmarkCli.kt): benchmark CLI entrypoint.
+- [BenchmarkRunner.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/BenchmarkRunner.kt): benchmark orchestration + option parsing.
+- [BenchmarkModels.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/BenchmarkModels.kt): benchmark report and row data models.
+- [BenchmarkSummary.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/BenchmarkSummary.kt): benchmark summary/statistics calculations.
+- [BenchmarkJson.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/BenchmarkJson.kt): benchmark JSON serialization.
+- [CliArgs.kt](https://github.com/Wayrion/pdownload/blob/main/lib/src/main/kotlin/com/wayrion/pdownload/CliArgs.kt): shared CLI argument parsing and standardized CLI error helpers.
 
 Tests are under `lib/src/test/kotlin/com/wayrion/pdownload/LibraryTest.kt`.
 Plotting lives in `scripts/plot_benchmark.py`.
