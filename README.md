@@ -1,5 +1,7 @@
 # Parallel Range Downloader (Kotlin)
 
+![https://github.com/Wayrion/pdownload](screenshots/pdownload.png)
+
 This project implements a parallel chunk-based downloader using HTTP `Range` requests.
 It includes:
 - a local Apache Docker setup configured for HTTP/2 (`h2`/`h2c`),
