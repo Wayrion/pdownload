@@ -206,3 +206,24 @@ Useful tuning flags for experiments:
 - `--mode optimized`: usually lower copy overhead versus naive mode.
 - `--max-retries` + `--retry-delay-ms`: improve stability on flaky links without over-retrying.
 - `--connect-timeout-ms` and `--request-timeout-ms`: avoid hangs and improve benchmark consistency.
+
+## Future scope: JVM runtime tuning
+
+The downloader and benchmark are currently focused on algorithmic/runtime-structure choices (naive vs optimized vs processes). A strong next step is JVM-level tuning, because GC behavior and JIT policy can materially affect latency stability and throughput in I/O-heavy workloads.
+
+Possible future experiments:
+- compare GC policies with fixed benchmark settings (e.g., G1 vs ZGC vs Shenandoah where available),
+- tune heap sizing and pause goals to reduce stop-the-world impact (for example `-Xms/-Xmx` and collector-specific pause targets),
+- compare JDK distributions under the same benchmark matrix (same machine, same file, same thread counts),
+- profile long benchmark runs to detect GC/compilation outliers and tail-latency spikes.
+
+Behavior notes across JVMs on a high level:
+- **HotSpot-based JDKs** (Temurin, Zulu, etc.) share core VM architecture, but may differ in packaging defaults, patch cadence, and collector availability by version.
+- **G1** is a good general-purpose default; it balances throughput and pause time but can still show pauses under allocation pressure.
+- **Low-pause collectors** like ZGC/Shenandoah are designed for shorter pauses, often at some throughput or footprint trade-off depending on workload.
+- **Azul Prime** is designed around low-latency runtime techniques and is worth evaluating when pause-time consistency is a hard requirement.
+
+Reference context for this direction:
+- Kotlin + Azul collaboration note: https://blog.jetbrains.com/kotlin/2025/05/kotlin-and-azul-collaboration-for-enhanced-runtime-performance/
+
+In short: thread-based parallelism is a strong baseline here, and JVM/GC tuning is a complementary layer that can further improve consistency and tail behavior.
