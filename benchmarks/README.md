@@ -24,7 +24,7 @@ Be careful when reading these plots — the x-axis ordering is switched in some 
 ## Methodology
 
 - Benchmarks are executed by [`run_benchmarks.sh`](../run_benchmarks.sh), which runs Gradle `:lib:runBenchmark` once per sample file and writes JSON reports to `build/`.
-- Files are benchmarked from smallest to largest (`64KB` → `1024KB`, then `64MB` → `1024MB`). For each file, thread counts are tested in descending order `64,32,16,8,4,2,1`; this influences plot axis ordering.
+- Files are benchmarked from smallest to largest (`64KB` → `1024KB`, then `64MB` → `1024MB`). For each file, thread counts are tested in descending order `64,32,16,8,4,2,1`; this changes plot axis ordering.
 - For each benchmark invocation, the Kotlin CLI first fetches metadata and computes a reference SHA-256 by downloading the full target once. Every warmup/run result is validated against this checksum.
 - Per mode/thread combination, execution order is:
 	1. warmups (`--warmup-iterations 3` in this dataset),
