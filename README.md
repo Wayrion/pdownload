@@ -241,6 +241,8 @@ These benchmark results are useful for directional comparison, but they are not 
 
 - **No statistical confidence intervals:** the JSON summary reports means and success rates, but does not compute variance, percentiles, confidence intervals, or significance tests.
 
+Lastly, I'm a human at the end of the day and its totally possible I have missed something or mis-represented data and values. In that case please feel free to open an issue.
+
 Interpret the plots primarily as comparative trends under this setup, not as universal absolute throughput/latency guarantees.
 
 ## CLI flags that can improve performance
