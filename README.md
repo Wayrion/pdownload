@@ -260,18 +260,22 @@ Run with 3 JIT warmup iterations on a 1MB file with the naive implementation.
 Shown below are hand picked benchmarks show casing the phenomenon noted above. Strong scaling is shown as the file size grows.
 
 ![Elapsed - 64KB](benchmarks/images/elapsed_benchmark-sample-64KB.png)
-![Elapsed - 256KB](benchmarks/images/elapsed_benchmark-sample-256KB.png)
-![Elapsed - 1024MB](benchmarks/images/elapsed_benchmark-sample-1024MB.png)
-![JIT - 64KB](benchmarks/images/JIT_benchmark-sample-64KB.png)
-![JIT - 1024MB](benchmarks/images/JIT_benchmark-sample-1024MB.png)
 
 *64KB elapsed:* small transfers show high relative overheads; extra threads often reduce throughput and warmup produces a larger percentage improvement compared with measured runs.
 
+![Elapsed - 256KB](benchmarks/images/elapsed_benchmark-sample-256KB.png)
+
 *256KB elapsed:* medium transfers are mixed — some thread counts help, others add overhead; behavior depends on chunk sizing and IO overhead.
+
+![Elapsed - 1024MB](benchmarks/images/elapsed_benchmark-sample-1024MB.png)
 
 *1024MB elapsed:* large transfers scale well; additional threads improve throughput and warmup has a smaller percentage impact on long-running transfers.
 
+![JIT - 64KB](benchmarks/images/JIT_benchmark-sample-64KB.png)
+
 *JIT 64KB:* warmup yields a visibly higher percent reduction in elapsed time for very small files (before vs after warmup).
+
+![JIT - 1024MB](benchmarks/images/JIT_benchmark-sample-1024MB.png)
 
 *JIT 1024MB:* for large files, the JIT/warmup effect is much smaller percentage-wise; measured runs dominate overall elapsed time.
 
