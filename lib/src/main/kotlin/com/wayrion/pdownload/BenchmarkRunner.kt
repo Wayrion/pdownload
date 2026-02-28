@@ -308,6 +308,7 @@ private fun runDownloadAttempt(
                 mode = mode,
                 ioBufferBytes = ioBufferBytes,
                 expectedSha256 = expectedSha256,
+                outputFromMemoryToDisk = false,
             ),
         )
         elapsedMillis = result.elapsedMillis

@@ -34,6 +34,7 @@ data class DownloadConfig(
     val mode: DownloadMode = DownloadMode.NAIVE,
     val ioBufferBytes: Int = 16 * 1024,
     val expectedSha256: String? = null,
+    val outputFromMemoryToDisk: Boolean = true,
 )
 
 data class FileMetadata(
@@ -101,6 +102,43 @@ class ParallelFileDownloader(
     ): DownloadResult {
         val workerCount = max(1, minOf(config.threadCount, chunkRanges.size))
 
+        if (config.outputFromMemoryToDisk && metadata.contentLength <= Int.MAX_VALUE.toLong()) {
+            val elapsedMillis = measureTimeMillis {
+                val assembled = ByteArray(metadata.contentLength.toInt())
+                val executor = Executors.newFixedThreadPool(workerCount)
+                try {
+                    val tasks = chunkRanges.map { range ->
+                        Callable {
+                            downloadChunkToMemory(client, url, range, assembled, config)
+                        }
+                    }
+                    val futures = executor.invokeAll(tasks)
+                    futures.forEach { it.get() }
+                } finally {
+                    executor.shutdown()
+                    executor.awaitTermination(30, TimeUnit.SECONDS)
+                }
+
+                Files.write(
+                    destination,
+                    assembled,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE,
+                )
+            }
+
+            val downloadedSize = Files.size(destination)
+            if (downloadedSize != metadata.contentLength) {
+                throw IllegalStateException(
+                    "Downloaded file size mismatch. expected=${metadata.contentLength} actual=$downloadedSize",
+                )
+            }
+
+            verifyChecksumIfConfigured(destination, config)
+            return toResult(url, destination, downloadedSize, chunkRanges.size, elapsedMillis)
+        }
+
         FileChannel.open(
             destination,
             StandardOpenOption.CREATE,
@@ -136,6 +174,37 @@ class ParallelFileDownloader(
             verifyChecksumIfConfigured(destination, config)
             return toResult(url, destination, downloadedSize, chunkRanges.size, elapsedMillis)
         }
+    }
+
+    private fun downloadChunkToMemory(
+        client: HttpClient,
+        url: String,
+        chunk: ChunkRange,
+        assembled: ByteArray,
+        config: DownloadConfig,
+    ) {
+        val bytes = fetchChunkWithRetry(
+            client = client,
+            url = url,
+            startInclusive = chunk.startInclusive,
+            endInclusive = chunk.endInclusive,
+            requestTimeout = config.requestTimeout,
+            maxRetries = config.maxRetriesPerChunk,
+            retryDelayMillis = config.retryDelayMillis,
+        ) { response ->
+            response.body().use { stream ->
+                stream.readBytes()
+            }
+        }
+
+        val expectedBytes = expectedChunkBytes(chunk.startInclusive, chunk.endInclusive).toInt()
+        if (bytes.size != expectedBytes) {
+            throw IllegalStateException(
+                "Chunk ${chunk.index} size mismatch. expected=$expectedBytes actual=${bytes.size}",
+            )
+        }
+
+        System.arraycopy(bytes, 0, assembled, chunk.startInclusive.toInt(), bytes.size)
     }
 
     private fun downloadWithProcesses(

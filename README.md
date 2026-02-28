@@ -5,7 +5,7 @@
 This project implements a parallel chunk-based downloader using HTTP `Range` requests.
 It includes:
 - a local Apache Docker setup configured for HTTP/2 (`h2`/`h2c`),
-- a downloader CLI (default `--threads 8`),
+- a downloader CLI (default `--threads 8`, `--output-from-memory true`),
 - benchmark CLI for powers-of-two thread counts,
 - KoTest coverage for correctness and retries,
 - a Python plotting script with a JetBrains-inspired theme.
@@ -83,7 +83,7 @@ Or as a single one-liner:
 docker compose -f docker/docker-compose.yml down --remove-orphans && docker compose -f docker/docker-compose.yml build --no-cache && docker compose -f docker/docker-compose.yml up -d --force-recreate
 ```
 
-The compose spec is in [docker-compose.yml](docker-compose.yml).
+The compose spec is in [docker/docker-compose.yml](docker/docker-compose.yml).
 
 ## 2) Downloader CLI (Task 2 + Task 4)
 
@@ -99,6 +99,8 @@ Download file with defaults (`8` threads, `naive` mode):
 ./gradlew :lib:run --args="--url http://127.0.0.1:8080/sample.txt --output build/download.bin"
 ```
 
+Default behavior assembles all chunks in memory and writes the final file to disk once (`--output-from-memory true`).
+
 Run optimized mode:
 
 ```bash
@@ -109,6 +111,10 @@ Run optimized mode:
 - `naive`: buffered read/write chunk loop,
 - `optimized`: `FileChannel.transferFrom` path,
 - `processes`: per-chunk child JVM worker and merge.
+
+Memory output toggle:
+- `--output-from-memory true` (default): assemble chunks in memory, then write final file once.
+- `--output-from-memory false`: stream chunk writes directly to destination file.
 
 ## 3) Tests (Task 3)
 
@@ -246,6 +252,7 @@ These benchmark results are useful for directional comparison, but they are not 
 - **Single-host/single-environment bias:** results reflect one machine/runtime configuration and should not be generalized without rerunning on the target environment.
 
 - **No statistical confidence intervals:** the JSON summary reports means and success rates, but does not compute variance, percentiles, confidence intervals, or significance tests.
+- **Default memory-output path is not represented in published benchmark plots:** the benchmark runner explicitly uses streamed writes (`outputFromMemoryToDisk=false`) for historical comparability, while downloader CLI defaults to memory assembly (`--output-from-memory true`).
 
 Lastly, I'm a human at the end of the day and its totally possible I have missed something or mis-represented data and values. In that case please feel free to open an issue.
 

@@ -118,6 +118,32 @@ class LibraryTest : StringSpec({
         }
     }
 
+    "output from memory disabled: streamed write path still downloads accurately" {
+        val data = buildData(180 * 1024 + 19)
+        val server = TestRangeServer(data)
+        server.start()
+
+        try {
+            val output = Files.createTempFile("streamed-write", ".bin")
+            val downloader = ParallelFileDownloader()
+
+            val result = downloader.download(
+                url = server.url("/file"),
+                destination = output,
+                config = DownloadConfig(
+                    threadCount = 8,
+                    chunkSizeBytes = 24 * 1024,
+                    outputFromMemoryToDisk = false,
+                ),
+            )
+
+            result.bytesDownloaded shouldBe data.size.toLong()
+            Files.readAllBytes(output).toList() shouldBe data.toList()
+        } finally {
+            server.stop()
+        }
+    }
+
     "retry: one chunk returns 500 once then succeeds" {
         val data = buildData(220 * 1024)
         val targetRange = "bytes=65536-131071"

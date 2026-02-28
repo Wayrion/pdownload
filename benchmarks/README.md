@@ -30,6 +30,7 @@ Be careful when reading these plots — the x-axis ordering is switched in some 
 	1. warmups (`--warmup-iterations 3` in this dataset),
 	2. measured runs (`--iterations 5` in this dataset).
 	Warmups are recorded under `warmups`; measured iterations are recorded under `runs`.
+- The benchmark runner in this dataset uses streamed writes (`outputFromMemoryToDisk=false`) for comparability with prior runs. The downloader CLI default (`--output-from-memory true`) is intentionally not represented in these plots.
 - This benchmark set uses modes `naive` and `optimized` (as passed by `run_benchmarks.sh`). The CLI can also benchmark `processes`, but it is not included in these plots.
 - For each attempt, the runner downloads to a unique temp file, measures `elapsedMillis`, computes `sha256`, records `bytesDownloaded`, and marks `success=true` only when checksum matches expected content. Temp artifacts are deleted after each attempt.
 - Summary computation (`summary.perMode`) groups measured `runs` by mode/thread:

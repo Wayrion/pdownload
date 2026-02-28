@@ -26,6 +26,7 @@ fun main(args: Array<String>) {
         mode = options.mode ?: DownloadMode.NAIVE,
         ioBufferBytes = options.ioBufferBytes ?: (16 * 1024),
         expectedSha256 = options.expectedSha256,
+        outputFromMemoryToDisk = options.outputFromMemoryToDisk ?: true,
     )
 
     val downloader = ParallelFileDownloader()
@@ -49,6 +50,7 @@ private fun printUsage() {
                 |  --mode <naive|optimized|processes>  Download strategy (default: naive)
                 |  --io-buffer-bytes <N>     Per-thread I/O buffer bytes (default: 16384)
                 |  --expected-sha256 <HEX>   Optional expected SHA-256 for verification
+                |  --output-from-memory <true|false>  Assemble in memory then write once (default: true)
                 |  --connect-timeout-ms <N>  Client connection timeout (default: 10000)
                 |  --request-timeout-ms <N>  Per-request timeout (default: 30000)
                 |  --help                    Print this help
@@ -66,6 +68,7 @@ private data class CliOptions(
     val mode: DownloadMode? = null,
     val ioBufferBytes: Int? = null,
     val expectedSha256: String? = null,
+    val outputFromMemoryToDisk: Boolean? = null,
     val connectTimeoutMs: Long? = null,
     val requestTimeoutMs: Long? = null,
     val showHelp: Boolean = false,
@@ -90,6 +93,7 @@ private data class CliOptions(
                     "--mode" -> options = options.copy(mode = parseMode(arg.value!!))
                     "--io-buffer-bytes" -> options = options.copy(ioBufferBytes = arg.value!!.toInt())
                     "--expected-sha256" -> options = options.copy(expectedSha256 = arg.value!!)
+                    "--output-from-memory" -> options = options.copy(outputFromMemoryToDisk = parseBoolean(arg.flag, arg.value!!))
                     "--connect-timeout-ms" -> options = options.copy(connectTimeoutMs = arg.value!!.toLong())
                     "--request-timeout-ms" -> options = options.copy(requestTimeoutMs = arg.value!!.toLong())
                     "--help", "-h" -> options = options.copy(showHelp = true)
@@ -106,6 +110,14 @@ private data class CliOptions(
                 "optimized" -> DownloadMode.OPTIMIZED
                 "processes" -> DownloadMode.PROCESSES
                 else -> cliInvalidValue("--mode", value, "naive|optimized|processes")
+            }
+        }
+
+        private fun parseBoolean(flag: String, value: String): Boolean {
+            return when (value.trim().lowercase()) {
+                "true" -> true
+                "false" -> false
+                else -> cliInvalidValue(flag, value, "true|false")
             }
         }
     }
