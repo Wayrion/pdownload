@@ -219,7 +219,7 @@ Generated charts include:
 Note: It was expected that thread-based parallelism would outperform process-based parallelism due to lower coordination overhead and no process-level isolation costs. This scenario was benchmarked explicitly, and the hypothesis was confirmed, as shown in the graph below.
 
 ![Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
-This was done on a very small sample file (64KB) as the benchmark was taking too long for larger files which included multiple iterations for warmup and to account for run to run variance. However, it is obvious that the thread based parallelism approach is superior. Furthermore, the benchmark is limited to 8 processes in a real world it would realisticly be tied to the number of processors available and 8 is enough to demonstrate the mis-use of processes in this use-case. 
+This was done on a very small sample file (64KB) as the benchmark was taking too long for larger files which included multiple iterations for warmup and to account for run to run variance. However, it is obvious that the thread based parallelism approach is superior. Furthermore, the benchmark is limited to 8 processes in a real world it would realisticly be tied to the number of processors available and 8 is enough to demonstrate the mis-use of processes in this use-case. Lastly, the benchmark is repeated 5 times to account for run to run variance.
 
 
 ![Elapsed by threads](screenshots/elapsed_by_threads.png)
@@ -229,6 +229,8 @@ With 3 JIT warmup iterations on 1MB file.
 ![Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
 
 Run with 3 JIT warmup iterations on a 1MB file with the naive implementation.
+
+
 
 ## Benchmark limitations
 
