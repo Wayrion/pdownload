@@ -3,10 +3,23 @@
 
 The plots generated from the benchmark JSON files. Each benchmark has two images: an "elapsed" plot and a "JIT/warmup" comparison.
 
-
 > [!CAUTION]
 Be careful when reading these plots — the x-axis ordering is switched in some graphs and the y-axis scale changes between plots. This happened because benchmarks were run from smallest to largest so smaller runs finished earlier; compare axes and scales carefully before drawing conclusions.
 
+## Navigation
+
+- **Small samples:** 
+· [64KB](#benchmark-sample-64kb)
+· [128KB](#benchmark-sample-128kb) 
+· [256KB](#benchmark-sample-256kb) 
+· [512KB](#benchmark-sample-512kb) 
+· [1024KB](#benchmark-sample-1024kb)
+- **Large samples:** 
+· [64MB](#benchmark-sample-64mb) 
+· [128MB](#benchmark-sample-128mb) 
+· [256MB](#benchmark-sample-256mb) 
+· [512MB](#benchmark-sample-512mb) 
+· [1024MB](#benchmark-sample-1024mb)
 
 ## Small samples
 
