@@ -215,7 +215,7 @@ Generated charts include:
 Note: It was expected that thread-based parallelism would outperform process-based parallelism due to lower coordination overhead and no process-level isolation costs. This scenario was benchmarked explicitly, and the hypothesis was confirmed, as shown in the graph below.
 
 ![Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
-
+This was done on a very small sample file as the benchmark was taking too long for larger files which included multiple iterations for warmup and to account for run to run variance. However, it is obvious that the thread based parallelism approach is superior. 
 
 
 ![Elapsed by threads](screenshots/elapsed_by_threads.png)
@@ -225,6 +225,23 @@ With 8 JIT warmup iterations on 1MB file.
 ![Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
 
 Run with 8 JIT warmup iterations on a 1MB file with the naive implementation.
+
+## Benchmark limitations
+
+These benchmark results are useful for directional comparison, but they are not a fully controlled performance lab measurement.
+
+- **JIT/GC effects are not isolated:** warmup and measured phases include JVM compilation and garbage-collection behavior, and there is no explicit GC/JIT instrumentation in the report.
+- **OS state is not controlled:** CPU frequency scaling, thermal throttling, scheduler decisions, background services, and interrupt noise can affect timings. While, this benchmark was run on Oracle cloud infrasture which ensures that the CPU is fixed at a specific frequence and there is no throttling, other factors are not accounted for.
+
+- **Filesystem/page cache effects are not controlled:** repeated downloads can benefit from kernel page cache and filesystem cache behavior, changing later-run latency.
+
+- **Network stack variability is not controlled:** even on localhost/docker, TCP buffering, socket scheduling, and container/host networking overhead introduce variance.
+
+- **Single-host/single-environment bias:** results reflect one machine/runtime configuration and should not be generalized without rerunning on the target environment.
+
+- **No statistical confidence intervals:** the JSON summary reports means and success rates, but does not compute variance, percentiles, confidence intervals, or significance tests.
+
+Interpret the plots primarily as comparative trends under this setup, not as universal absolute throughput/latency guarantees.
 
 ## CLI flags that can improve performance
 
