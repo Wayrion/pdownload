@@ -294,3 +294,4 @@ __marimo__/
 sample-*.txt
 sample.txt
 !docker/sample.txt
+TODO.txt

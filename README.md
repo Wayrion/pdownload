@@ -216,17 +216,23 @@ Note: It was expected that thread-based parallelism would outperform process-bas
 
 ![Processes mode elapsed by threads](screenshots/elapsed_by_processes.png)
 
+
+
 ![Elapsed by threads](screenshots/elapsed_by_threads.png)
 
+With 8 JIT warmup iterations on 1MB file. 
+
 ![Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
+
+Run with 8 JIT warmup iterations on a 1MB file with the naive implementation.
 
 ## CLI flags that can improve performance
 
 Useful tuning flags for experiments:
-- `--threads`: increase parallelism until network/disk saturates.
+- `--threads`: increase parallelism until network/disk saturates or the overhead from switching threads hurts performance. From testing, 8 seems like the best overall thread count.
 - `--chunk-size-bytes`: reduce request overhead with larger chunks; too large can underutilize threads.
 - `--io-buffer-bytes`: increase per-thread buffering to reduce syscall pressure.
-- `--mode optimized`: usually lower copy overhead versus naive mode.
+- `--mode optimized`: usually lower copy overhead versus naive mode but sometimes can be slightly worse.
 - `--max-retries` + `--retry-delay-ms`: improve stability on flaky links without over-retrying.
 - `--connect-timeout-ms` and `--request-timeout-ms`: avoid hangs and improve benchmark consistency.
 
