@@ -224,11 +224,11 @@ This was done on a very small sample file (64KB) as the benchmark was taking too
 
 ![Elapsed by threads](screenshots/elapsed_by_threads.png)
 
-With 8 JIT warmup iterations on 1MB file. 
+With 3 JIT warmup iterations on 1MB file. 
 
 ![Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
 
-Run with 8 JIT warmup iterations on a 1MB file with the naive implementation.
+Run with 3 JIT warmup iterations on a 1MB file with the naive implementation.
 
 ## Benchmark limitations
 
