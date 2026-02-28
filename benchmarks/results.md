@@ -4,7 +4,7 @@
 The plots generated from the benchmark JSON files. Each benchmark has two images: an "elapsed" plot and a "JIT/warmup" comparison.
 
 
-[!CAUTION]
+> [!CAUTION]
 Be careful when reading these plots — the x-axis ordering is switched in some graphs and the y-axis scale changes between plots. This happened because benchmarks were run from smallest to largest so smaller runs finished earlier; compare axes and scales carefully before drawing conclusions.
 
 
