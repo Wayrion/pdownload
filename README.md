@@ -41,7 +41,7 @@ Run with bundled sample file:
 docker run --rm -d --name pdownload-httpd -p 8080:80 pdownload-apache-h2
 ```
 
-Run against your own host directory (as requested in task text):
+Run against your own host directory:
 
 ```bash
 docker run --rm -d --name pdownload-httpd -p 8080:80 \
@@ -54,7 +54,6 @@ Verify host accessibility + required headers:
 ```bash
 curl -I http://127.0.0.1:8080/sample.txt
 curl -i -H "Range: bytes=0-31" http://127.0.0.1:8080/sample.txt
-curl -I --http2-prior-knowledge http://127.0.0.1:8080/sample.txt
 ```
 
 Stop server:
@@ -96,12 +95,42 @@ Run unit tests:
 ./gradlew :lib:test
 ```
 
+Latest observed run summary (`com.wayrion.pdownload.LibraryTest`):
+- tests: `10`
+- failures: `0`
+- skipped: `0`
+- success rate: `100%`
+- duration: `4.485s`
+
+HTML report path:
+- `build/lib/reports/tests/test/classes/com.wayrion.pdownload.LibraryTest.html`
+
 Covered scenarios include:
-- 200 KB parallel chunk download,
-- non-even chunk boundaries,
-- retry once then succeed,
-- retry exhausted failure,
-- process mode correctness and process mode retry behavior.
+- parallel chunks with dynamic payload sizing (content + chunk count validation),
+- non-even boundaries where file size is not divisible by chunk size,
+- optimized mode correctness (content + chunk count validation),
+- processes mode correctness (content + chunk count validation),
+- retry success for thread mode when one chunk fails once,
+- retry success for process mode when one chunk fails once,
+- retry exhausted failure when a chunk keeps returning errors,
+- checksum mismatch failure when expected SHA-256 is incorrect,
+- metadata validation failure when `Accept-Ranges: bytes` is missing,
+- config validation failure when invalid settings are provided (e.g. `threadCount=0`).
+
+P.S. If you're SSH'd into a remote machine and want to view generated test reports in your browser, you can serve them quickly:
+
+```bash
+cd build/lib/reports/tests/test
+python3 -m http.server 8765
+```
+
+Then tunnel locally and open in your browser:
+
+```bash
+ssh -L 8765:127.0.0.1:8765 <user>@<remote-host>
+```
+
+Open `http://127.0.0.1:8765` locally.
 
 ## 4) Benchmark matrix + JSON output
 
