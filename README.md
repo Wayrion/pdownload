@@ -125,6 +125,8 @@ Latest observed run summary (`com.wayrion.pdownload.LibraryTest`):
 - success rate: `100%`
 - duration: `4.485s`
 
+![Tests passing - LibraryTest](screenshots/tests.png)
+
 HTML report path:
 - `build/lib/reports/tests/test/classes/com.wayrion.pdownload.LibraryTest.html`
 
@@ -139,6 +141,8 @@ Covered scenarios include:
 - checksum mismatch failure when expected SHA-256 is incorrect,
 - metadata validation failure when `Accept-Ranges: bytes` is missing,
 - config validation failure when invalid settings are provided (e.g. `threadCount=0`).
+
+
 
 P.S. If you're SSH'd into a remote machine and want to view generated test reports in your browser, you can serve them quickly:
 
