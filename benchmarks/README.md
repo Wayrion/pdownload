@@ -8,6 +8,8 @@ Be careful when reading these plots — the x-axis ordering is switched in some 
 
 ## Navigation
 
+> [!NOTE] Lower is better in the graphs
+
 - **Small samples:** 
 · [64KB](#benchmark-sample-64kb)
 · [128KB](#benchmark-sample-128kb) 
