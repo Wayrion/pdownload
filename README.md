@@ -225,7 +225,8 @@ Generated charts include:
 
 ### Benchmark screenshots
 
-> [!NOTE] Lower is better in the graphs
+> [!NOTE] 
+> Lower is better in the graphs
 
 - [Elapsed by threads](screenshots/elapsed_by_threads.png)
 - [Naive warmup before vs after](screenshots/jit_warmup_before_after.png)
